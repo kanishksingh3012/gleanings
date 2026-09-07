@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LinkedIn Post Sync</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        width: 320px;
+        padding: 14px;
+        color: #18181b;
+      }
+      h2 {
+        font-size: 14px;
+        margin: 0 0 10px;
+      }
+      #banner {
+        background: #fef3c7;
+        color: #92400e;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+      #banner a {
+        color: inherit;
+        font-weight: 600;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        border: none;
+        border-radius: 6px;
+        background: #18181b;
+        color: white;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #status {
+        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      #details {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #52525b;
+        white-space: pre-wrap;
+      }
+      #optionsLink {
+        display: block;
+        margin-top: 10px;
+        font-size: 11px;
+        text-align: center;
+        color: #71717a;
+      }
+      [hidden] {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>LinkedIn Post Sync</h2>
+
+    <div id="banner" hidden>
+      Not configured yet. <a href="#" id="openOptionsFromBanner">Open Options</a>
+    </div>
+
+    <button id="syncBtn">Sync This Page</button>
+    <p style="font-size: 11px; color: #71717a; margin: 6px 0 0">
+      Works on your saved-posts list (syncs everything visible) or on one
+      post's own page (syncs just that post).
+    </p>
+    <div id="status"></div>
+    <pre id="details" hidden></pre>
+    <a href="#" id="optionsLink">Settings</a>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

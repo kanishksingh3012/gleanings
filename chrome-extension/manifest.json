@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Saved Posts Sync",
+  "version": "0.1.0",
+  "description": "Scrapes your LinkedIn saved posts and syncs them to your personal post-library backend.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": [
+    "https://www.linkedin.com/my-items/saved-posts/*",
+    "https://www.linkedin.com/feed/update/*",
+    "https://www.linkedin.com/posts/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/my-items/saved-posts/*",
+        "https://www.linkedin.com/feed/update/*",
+        "https://www.linkedin.com/posts/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LinkedIn Post Sync"
+  },
+  "options_page": "options.html"
+}
