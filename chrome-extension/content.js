@@ -49,7 +49,12 @@ function extractAuthor(card) {
   // one with text.
   const anchors = card.querySelectorAll('a[href*="/in/"], a[href*="/company/"]');
   for (const anchor of anchors) {
-    const name = anchor.innerText?.trim() || anchor.getAttribute("aria-label")?.trim();
+    // The connection-degree badge ("· 3rd+") is often nested inside the same
+    // anchor as the name, on its own line — take just the first non-empty
+    // line rather than the whole innerText.
+    const rawText = anchor.innerText?.trim();
+    const firstLine = rawText?.split("\n").find((line) => line.trim())?.trim();
+    const name = firstLine || anchor.getAttribute("aria-label")?.trim();
     if (name) {
       return { authorName: name, authorUrl: canonicalizeUrl(anchor.href), authorAnchor: anchor };
     }
@@ -148,14 +153,28 @@ function extractUrnFromUrl(href) {
 }
 
 function extractSinglePost() {
+  // `.innerText` only exists on real elements, not on `Document` itself
+  // (`document.innerText` is always undefined) — scope everything to a real
+  // element. Prefer LinkedIn's "Primary content" landmark, which excludes
+  // the profile-stats sidebar, footer links, and messaging widget that
+  // `document.body` would otherwise pull in as noise; fall back to the
+  // whole body if that landmark isn't present on this page.
+  const root = document.querySelector('section[aria-label="Primary content"]') ?? document.body;
+
   const urn = extractUrnFromUrl(window.location.href);
   if (!urn) return { ok: false, index: 0, reason: "no_urn_in_url" };
 
-  const author = extractAuthor(document);
+  const author = extractAuthor(root);
   if (!author) return { ok: false, index: 0, reason: "no_author" };
 
-  const rawText = extractRawText(document);
-  if (!rawText) return { ok: false, index: 0, reason: "no_text" };
+  const rawText = extractRawText(root);
+  if (!rawText) {
+    console.warn(`${LOG_PREFIX} no_text diagnostics:`, {
+      ltrCandidateCount: root.querySelectorAll('span[dir="ltr"], div[dir="ltr"]').length,
+      bodyInnerTextLength: root.innerText?.length ?? 0,
+    });
+    return { ok: false, index: 0, reason: "no_text" };
+  }
 
   return {
     ok: true,
@@ -163,7 +182,7 @@ function extractSinglePost() {
       linkedin_urn: urn,
       authorName: author.authorName,
       authorUrl: author.authorUrl,
-      authorAvatarUrl: extractAvatar(document, author.authorAnchor),
+      authorAvatarUrl: extractAvatar(root, author.authorAnchor),
       rawText,
       originalPostUrl: canonicalizeUrl(window.location.href),
     },
@@ -225,6 +244,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     (async () => {
       let payload;
       if (isSinglePostPage()) {
+        // Give the post body a moment to finish rendering — the header
+        // (author info) often paints before the body text streams in.
+        await sleep(1200);
         payload = extractSinglePostResult();
       } else {
         await scrollAndSettle();

@@ -80,19 +80,29 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** One retry for transient failures (network blip, 5xx, rate limit) before giving up. */
+const TRANSIENT_RETRY_DELAYS_MS = [500, 1500];
+
+/**
+ * Retries transient failures (network blip, 5xx, rate limit, Gemini's
+ * frequent "model is currently experiencing high demand" 503) with
+ * increasing backoff before giving up.
+ */
 async function generateWithRetry(
   model: ReturnType<typeof getModel>,
   prompt: string,
 ): Promise<string> {
-  try {
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch {
-    await sleep(300);
-    const result = await model.generateContent(prompt);
-    return result.response.text();
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (err) {
+      lastError = err;
+      const delay = TRANSIENT_RETRY_DELAYS_MS[attempt];
+      if (delay !== undefined) await sleep(delay);
+    }
   }
+  throw lastError;
 }
 
 /**
@@ -129,24 +139,33 @@ export async function parsePost(sanitizedText: string): Promise<ParsedPost> {
 
   let prompt = `Extract structured metadata from this LinkedIn post:\n\n${truncated}`;
 
-  const MAX_SCHEMA_ATTEMPTS = 2;
-  for (let attempt = 0; attempt < MAX_SCHEMA_ATTEMPTS; attempt++) {
-    const raw = await generateWithRetry(model, prompt);
+  try {
+    const MAX_SCHEMA_ATTEMPTS = 2;
+    for (let attempt = 0; attempt < MAX_SCHEMA_ATTEMPTS; attempt++) {
+      const raw = await generateWithRetry(model, prompt);
 
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(raw);
-    } catch {
-      prompt = `${prompt}\n\nYour previous response was not valid JSON. Respond with ONLY valid JSON matching the schema.`;
-      continue;
+      let parsedJson: unknown;
+      try {
+        parsedJson = JSON.parse(raw);
+      } catch {
+        prompt = `${prompt}\n\nYour previous response was not valid JSON. Respond with ONLY valid JSON matching the schema.`;
+        continue;
+      }
+
+      const result = ParsedPostSchema.safeParse(parsedJson);
+      if (result.success) {
+        return result.data;
+      }
+
+      prompt = `${prompt}\n\nYour previous response failed validation: ${result.error.message}. Fix it and respond again with ONLY valid JSON matching the schema, using the enum values exactly as given.`;
     }
-
-    const result = ParsedPostSchema.safeParse(parsedJson);
-    if (result.success) {
-      return result.data;
-    }
-
-    prompt = `${prompt}\n\nYour previous response failed validation: ${result.error.message}. Fix it and respond again with ONLY valid JSON matching the schema, using the enum values exactly as given.`;
+  } catch (err) {
+    // The Gemini call itself failed after retries (network error, 5xx,
+    // rate limit) — surface it as the same typed error the schema-failure
+    // path uses, so the route always returns a clean 502 instead of an
+    // unhandled crash bubbling up as a raw 500.
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new LLMExtractionError(`Gemini request failed: ${reason}`);
   }
 
   throw new LLMExtractionError("Gemini response failed schema validation after retry");
