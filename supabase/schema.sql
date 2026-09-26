@@ -1,4 +1,5 @@
--- Run this in the Supabase SQL Editor for your project.
+-- Complete setup for a fresh Supabase project. Paste this whole file into the
+-- Supabase SQL Editor and run it once. Safe to re-run.
 
 CREATE TABLE IF NOT EXISTS public.posts (
   linkedin_urn TEXT PRIMARY KEY,
@@ -12,18 +13,24 @@ CREATE TABLE IF NOT EXISTS public.posts (
   link_context TEXT,
   intent_tags TEXT[] DEFAULT '{}',
   domain_tags TEXT[] DEFAULT '{}',
-  status TEXT DEFAULT 'published', -- 'published' or 'draft'
+  status TEXT DEFAULT 'published', -- 'published' or 'archived'
   created_at TIMESTAMPTZ DEFAULT NOW(),
   synced_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Indexing for fast search and filter queries
+-- Only the server-side service_role key touches this table (it bypasses RLS).
+-- RLS with zero policies keeps anon/authenticated fully locked out.
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+
+-- Explicit grant: projects created with "Automatically expose new tables"
+-- disabled don't give service_role table privileges by default.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.posts TO service_role;
+
 CREATE INDEX IF NOT EXISTS idx_posts_domain_tags ON public.posts USING GIN (domain_tags);
 CREATE INDEX IF NOT EXISTS idx_posts_intent_tags ON public.posts USING GIN (intent_tags);
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON public.posts (created_at DESC);
 
--- Storage bucket setup (do this in the Supabase dashboard, Storage tab —
--- bucket creation isn't available via plain SQL):
---   1. Create a new bucket named `post-avatars`.
---   2. Mark it as a public bucket (public read access), since avatar images
---      are displayed directly in the PWA reader with no auth in front of them.
+-- Public bucket for mirrored avatars: reads bypass RLS, writes only via service_role.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('post-avatars', 'post-avatars', true)
+ON CONFLICT (id) DO NOTHING;

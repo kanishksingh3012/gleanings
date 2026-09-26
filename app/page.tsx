@@ -1,3 +1,4 @@
+import { ThemeToggle } from "@/components/theme-toggle";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 // This reads live data from Supabase on every request — without this, Next
@@ -36,7 +37,7 @@ async function getPosts(): Promise<PostRow[]> {
 
 function Badge({ children }: { children: string }) {
   return (
-    <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+    <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
       {children}
     </span>
   );
@@ -44,7 +45,7 @@ function Badge({ children }: { children: string }) {
 
 function PostCard({ post }: { post: PostRow }) {
   return (
-    <article className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+    <article className="rounded-xl border bg-card p-5 text-card-foreground">
       <div className="mb-2 flex flex-wrap gap-1.5">
         {post.domain_tags.map((tag) => (
           <Badge key={tag}>{tag}</Badge>
@@ -54,9 +55,9 @@ function PostCard({ post }: { post: PostRow }) {
         ))}
       </div>
 
-      <h2 className="mb-2 text-lg font-bold text-zinc-900 dark:text-zinc-50">{post.title}</h2>
+      <h2 className="mb-2 text-lg font-semibold">{post.title}</h2>
 
-      <div className="mb-3 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+      <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
         {post.author_avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element -- external, unknown-domain avatar URLs mirrored from LinkedIn/Supabase Storage
           <img
@@ -65,7 +66,7 @@ function PostCard({ post }: { post: PostRow }) {
             className="h-6 w-6 rounded-full object-cover"
           />
         ) : (
-          <span className="h-6 w-6 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          <span className="h-6 w-6 rounded-full bg-muted" />
         )}
         {post.author_url ? (
           <a href={post.author_url} className="font-medium hover:underline" target="_blank" rel="noopener noreferrer">
@@ -75,35 +76,26 @@ function PostCard({ post }: { post: PostRow }) {
           <span className="font-medium">{post.author_name}</span>
         )}
         <span>·</span>
-        <a
-          href={post.original_post_url}
-          className="hover:underline"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a href={post.original_post_url} className="hover:underline" target="_blank" rel="noopener noreferrer">
           View original post
         </a>
       </div>
 
-      <p className="mb-3 text-sm leading-6 text-zinc-700 dark:text-zinc-300">{post.summary}</p>
+      <p className="mb-3 max-w-measure text-sm leading-6">{post.summary}</p>
 
       {post.extracted_link && (
         <a
           href={post.extracted_link}
           target="_blank"
           rel="noopener noreferrer"
-          className="block rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+          className="block rounded-lg border bg-muted p-3 text-sm transition-colors hover:bg-accent"
         >
-          <div className="truncate font-medium text-zinc-800 dark:text-zinc-200">{post.extracted_link}</div>
-          {post.link_context && (
-            <div className="mt-0.5 text-zinc-500 dark:text-zinc-500">{post.link_context}</div>
-          )}
+          <div className="truncate font-medium">{post.extracted_link}</div>
+          {post.link_context && <div className="mt-0.5 text-muted-foreground">{post.link_context}</div>}
         </a>
       )}
 
-      <div className="mt-3 text-xs text-zinc-400 dark:text-zinc-600">
-        {new Date(post.created_at).toLocaleString()}
-      </div>
+      <div className="mt-3 text-xs text-muted-foreground">{new Date(post.created_at).toLocaleString()}</div>
     </article>
   );
 }
@@ -112,16 +104,15 @@ export default async function Home() {
   const posts = await getPosts();
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-10 dark:bg-black">
-      <main className="mx-auto flex max-w-2xl flex-col gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Post Library
-        </h1>
+    <div className="min-h-screen bg-background px-4 py-10">
+      <main className="mx-auto flex max-w-reading flex-col gap-4">
+        <header className="mb-4 flex items-center justify-between">
+          <h1 className="text-2xl font-semibold tracking-tight">Post Library</h1>
+          <ThemeToggle />
+        </header>
 
         {posts.length === 0 ? (
-          <p className="text-zinc-500 dark:text-zinc-400">
-            No posts synced yet. POST to <code>/api/sync</code> to add one.
-          </p>
+          <p className="text-muted-foreground">No posts saved yet.</p>
         ) : (
           posts.map((post) => <PostCard key={post.linkedin_urn} post={post} />)
         )}
