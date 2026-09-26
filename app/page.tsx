@@ -1,122 +1,110 @@
+import { MonitorIcon } from "lucide-react";
+import Link from "next/link";
+import { Suspense } from "react";
+import { FilterBar } from "@/components/library/filter-bar";
+import { PostCard } from "@/components/library/post-card";
+import { PostDetailSheet } from "@/components/library/post-detail-sheet";
+import { SearchInput } from "@/components/library/search-input";
+import { ViewTabs } from "@/components/library/view-tabs";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { timeAgo } from "@/lib/format";
+import { buildHref } from "@/lib/href";
+import { getLastSyncedAt, getPostByUrn, getPosts, mutationsEnabled, parseFilters } from "@/lib/posts";
 
-// This reads live data from Supabase on every request — without this, Next
-// would statically prerender the page at build time and freeze whatever
-// posts existed then, never showing newly synced posts without a rebuild.
+// Reads live data on every request instead of freezing it at build time.
 export const dynamic = "force-dynamic";
 
-interface PostRow {
-  linkedin_urn: string;
-  title: string;
-  summary: string;
-  author_name: string;
-  author_url: string | null;
-  author_avatar_url: string | null;
-  original_post_url: string;
-  extracted_link: string | null;
-  link_context: string | null;
-  intent_tags: string[];
-  domain_tags: string[];
-  created_at: string;
-}
+export default async function Home({ searchParams }: PageProps<"/">) {
+  const raw = await searchParams;
+  const filters = parseFilters(raw);
+  const selectedUrn = typeof raw.post === "string" ? raw.post : undefined;
 
-async function getPosts(): Promise<PostRow[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("posts")
-    .select("*")
-    .order("created_at", { ascending: false });
+  // Only the params the UI owns — keeps generated links clean.
+  const params = {
+    q: filters.q,
+    domain: filters.domain,
+    intent: filters.intent,
+    view: filters.view === "archived" ? "archived" : undefined,
+  };
 
-  if (error) {
-    throw new Error(`Failed to load posts: ${error.message}`);
-  }
-
-  return data ?? [];
-}
-
-function Badge({ children }: { children: string }) {
-  return (
-    <span className="rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
-      {children}
-    </span>
-  );
-}
-
-function PostCard({ post }: { post: PostRow }) {
-  return (
-    <article className="rounded-xl border bg-card p-5 text-card-foreground">
-      <div className="mb-2 flex flex-wrap gap-1.5">
-        {post.domain_tags.map((tag) => (
-          <Badge key={tag}>{tag}</Badge>
-        ))}
-        {post.intent_tags.map((tag) => (
-          <Badge key={tag}>{tag}</Badge>
-        ))}
-      </div>
-
-      <h2 className="mb-2 text-lg font-semibold">{post.title}</h2>
-
-      <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-        {post.author_avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external, unknown-domain avatar URLs mirrored from LinkedIn/Supabase Storage
-          <img
-            src={post.author_avatar_url}
-            alt={post.author_name}
-            className="h-6 w-6 rounded-full object-cover"
-          />
-        ) : (
-          <span className="h-6 w-6 rounded-full bg-muted" />
-        )}
-        {post.author_url ? (
-          <a href={post.author_url} className="font-medium hover:underline" target="_blank" rel="noopener noreferrer">
-            {post.author_name}
-          </a>
-        ) : (
-          <span className="font-medium">{post.author_name}</span>
-        )}
-        <span>·</span>
-        <a href={post.original_post_url} className="hover:underline" target="_blank" rel="noopener noreferrer">
-          View original post
-        </a>
-      </div>
-
-      <p className="mb-3 max-w-measure text-sm leading-6">{post.summary}</p>
-
-      {post.extracted_link && (
-        <a
-          href={post.extracted_link}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block rounded-lg border bg-muted p-3 text-sm transition-colors hover:bg-accent"
-        >
-          <div className="truncate font-medium">{post.extracted_link}</div>
-          {post.link_context && <div className="mt-0.5 text-muted-foreground">{post.link_context}</div>}
-        </a>
-      )}
-
-      <div className="mt-3 text-xs text-muted-foreground">{new Date(post.created_at).toLocaleString()}</div>
-    </article>
-  );
-}
-
-export default async function Home() {
-  const posts = await getPosts();
+  const [posts, lastSyncedAt] = await Promise.all([getPosts(filters), getLastSyncedAt()]);
+  const selected = selectedUrn
+    ? (posts.find((p) => p.linkedin_urn === selectedUrn) ?? (await getPostByUrn(selectedUrn)))
+    : null;
+  const canEdit = mutationsEnabled();
+  const hasFilters = Boolean(filters.q || filters.domain || filters.intent);
 
   return (
-    <div className="min-h-screen bg-background px-4 py-10">
-      <main className="mx-auto flex max-w-reading flex-col gap-4">
-        <header className="mb-4 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Post Library</h1>
-          <ThemeToggle />
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto flex max-w-reading flex-col gap-6 px-4 py-10 lg:max-w-5xl">
+        <header className="flex flex-col gap-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-semibold tracking-tight">Post Library</h1>
+              <p className="text-sm text-muted-foreground">
+                {lastSyncedAt ? `Last saved ${timeAgo(lastSyncedAt)}` : "Nothing saved yet"}
+              </p>
+            </div>
+            <ThemeToggle />
+          </div>
+
+          <p className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground sm:hidden">
+            <MonitorIcon className="size-4 shrink-0" />
+            Posts are saved from your desktop browser with the extension.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="sm:w-80">
+              <Suspense>
+                <SearchInput />
+              </Suspense>
+            </div>
+            <ViewTabs params={params} view={filters.view ?? "all"} />
+          </div>
         </header>
 
+        <FilterBar params={params} />
+
         {posts.length === 0 ? (
-          <p className="text-muted-foreground">No posts saved yet.</p>
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-16 text-center">
+            <p className="font-medium">
+              {hasFilters
+                ? "No posts match these filters"
+                : filters.view === "archived"
+                  ? "Nothing archived"
+                  : "Your library is empty"}
+            </p>
+            <p className="max-w-measure text-sm text-muted-foreground">
+              {hasFilters ? (
+                <Link href={buildHref({ view: params.view }, {})} className="underline underline-offset-4">
+                  Clear filters
+                </Link>
+              ) : filters.view === "archived" ? (
+                "Archived posts show up here and can be restored any time."
+              ) : (
+                "Open a LinkedIn post and use the extension's Save button to add it here."
+              )}
+            </p>
+          </div>
         ) : (
-          posts.map((post) => <PostCard key={post.linkedin_urn} post={post} />)
+          <main className="grid gap-4 lg:grid-cols-2">
+            {posts.map((post) => (
+              <PostCard
+                key={post.linkedin_urn}
+                post={post}
+                canEdit={canEdit}
+                detailHref={buildHref(params, { post: post.linkedin_urn })}
+              />
+            ))}
+          </main>
         )}
-      </main>
+      </div>
+
+      <PostDetailSheet
+        post={selected}
+        closeHref={buildHref(params, {})}
+        savedLabel={selected ? timeAgo(selected.synced_at) : null}
+      />
     </div>
   );
 }
