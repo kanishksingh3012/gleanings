@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Post Library",
+  title: "Gleanings",
   description: "Your saved LinkedIn posts, summarized and searchable.",
 };
 

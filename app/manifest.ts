@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Post Library",
-    short_name: "Library",
+    name: "Gleanings",
+    short_name: "Gleanings",
     description: "Your saved LinkedIn posts, summarized and searchable.",
     start_url: "/",
     display: "standalone",

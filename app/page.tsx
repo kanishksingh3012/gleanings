@@ -40,7 +40,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         <header className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-semibold tracking-tight">Post Library</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">Gleanings</h1>
               <p className="text-sm text-muted-foreground">
                 {lastSyncedAt ? `Last saved ${timeAgo(lastSyncedAt)}` : "Nothing saved yet"}
               </p>
