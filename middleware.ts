@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // Gates the whole site with one password (EDIT_PASSWORD) — same cookie
 // lib/auth.ts already sets, so getting past this also unlocks editing.
 // Fails closed in production: no EDIT_PASSWORD means nobody gets in.
-export const config = { matcher: ["/", "/settings", "/export"], runtime: "nodejs" };
+export const config = { matcher: ["/", "/export"], runtime: "nodejs" };
 
 function expectedToken(): string | null {
   const password = process.env.EDIT_PASSWORD;

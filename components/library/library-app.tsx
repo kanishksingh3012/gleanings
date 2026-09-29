@@ -1,8 +1,7 @@
 "use client";
 
-import { toast } from "@heroui/react";
+import { toast, useOverlayState } from "@heroui/react";
 import { DownloadIcon, MonitorIcon, SettingsIcon } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   addResource,
@@ -10,6 +9,7 @@ import {
   deletePost,
   deleteResource,
   setPostNote,
+  setPostTags,
   setResourceNote,
   togglePostFavorite,
   toggleResourceFavorite,
@@ -19,7 +19,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { filterPosts, filterResources } from "@/lib/filter";
 import { timeAgo } from "@/lib/format";
 import { buildHref } from "@/lib/href";
-import { parseFilters, type LibraryView, type Post, type PostFilters } from "@/lib/posts";
+import { DOMAIN_TAGS, parseFilters, type LibraryView, type Post, type PostFilters } from "@/lib/posts";
 import type { FoundResource, Resource } from "@/lib/resources";
 import { useSettings, type Settings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,7 @@ import { PostCard, type PostHandlers } from "./post-card";
 import { PostDetailDrawer } from "./post-detail-drawer";
 import { ResourceCard, type ResourceHandlers } from "./resource-card";
 import { SearchInput } from "./search-input";
+import { SettingsModal } from "./settings-modal";
 import { ViewTabs } from "./view-tabs";
 import { ViewToolbar } from "./view-toolbar";
 
@@ -107,6 +108,13 @@ export function LibraryApp({ initialPosts, initialResources, initialParams }: Li
   const selectedPost = selected ? (posts.find((p) => p.linkedin_urn === selected) ?? null) : null;
   const lastSaved = posts.reduce<string | null>((max, p) => (!max || p.synced_at > max ? p.synced_at : max), null);
   const compact = settings.density === "compact";
+  const settingsModal = useOverlayState();
+  // Built-in domains, tags created in Settings, and any custom tag already on a post.
+  const tagOptions = useMemo(
+    () => [...new Set<string>([...DOMAIN_TAGS, ...settings.customTags, ...posts.flatMap((p) => p.domain_tags)])],
+    [posts, settings.customTags],
+  );
+  const customTags = tagOptions.filter((tag) => !(DOMAIN_TAGS as readonly string[]).includes(tag));
 
   const changeFilters = (patch: Partial<PostFilters>) => setFilters((f) => ({ ...f, ...patch }));
 
@@ -238,14 +246,15 @@ export function LibraryApp({ initialPosts, initialResources, initialParams }: Li
               >
                 <DownloadIcon className="size-4" />
               </a>
-              <Link
-                href="/settings"
+              <button
+                type="button"
+                onClick={settingsModal.open}
                 aria-label="Settings"
                 title="Settings"
                 className="inline-flex size-9 items-center justify-center rounded-xl hover:bg-default"
               >
                 <SettingsIcon className="size-4" />
-              </Link>
+              </button>
               <EditLockButton />
               <ThemeToggle />
             </div>
@@ -270,7 +279,7 @@ export function LibraryApp({ initialPosts, initialResources, initialParams }: Li
           </div>
         </header>
 
-        <FilterBar filters={filters} view={view} onChange={changeFilters} />
+        <FilterBar filters={filters} view={view} customTags={customTags} onChange={changeFilters} />
 
         {items.length === 0 ? (
           hasFilters ? (
@@ -315,7 +324,10 @@ export function LibraryApp({ initialPosts, initialResources, initialParams }: Li
         onClose={() => setSelected(null)}
         onNote={postHandlers.onNote}
         onAddResource={addToResources}
+        onTags={(p, tags) => editPost(p.linkedin_urn, { domain_tags: tags }, () => setPostTags(p.linkedin_urn, tags))}
+        tagOptions={tagOptions}
       />
+      <SettingsModal state={settingsModal} />
     </div>
   );
 }

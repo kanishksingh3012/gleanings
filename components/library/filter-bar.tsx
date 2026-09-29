@@ -35,13 +35,14 @@ function Divider() {
 }
 
 interface FilterBarProps {
+  customTags: string[];
   filters: PostFilters;
   view: LibraryView;
   onChange: (patch: Partial<PostFilters>) => void;
 }
 
 /** Sticky pill row. "All" clears tag/type filters; clicking an active pill clears it. */
-export function FilterBar({ filters, view, onChange }: FilterBarProps) {
+export function FilterBar({ filters, view, customTags, onChange }: FilterBarProps) {
   const isResources = view === "resources";
   const noneSelected = isResources ? !filters.type : !filters.domain && !filters.intent;
   const toggle = <K extends "domain" | "intent" | "type">(key: K, value: string) =>
@@ -71,7 +72,7 @@ export function FilterBar({ filters, view, onChange }: FilterBarProps) {
         ))
       ) : (
         <>
-          {DOMAIN_TAGS.map((tag) => (
+          {[...DOMAIN_TAGS, ...customTags].map((tag) => (
             <Pill key={tag} active={filters.domain === tag} activeClass={tagClass(tag)} onClick={() => toggle("domain", tag)}>
               {tag}
             </Pill>

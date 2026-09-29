@@ -24,8 +24,8 @@ export default function PrivatePage() {
       <span className="text-3xl">🌾</span>
       <h1 className="text-lg font-semibold">This Gleanings library is private</h1>
       <p className="text-sm text-muted">
-        It's one person's personal, password-protected reading list. If that's you, enter the password below. If
-        not, this project is open source — you're welcome to{" "}
+        It&apos;s one person&apos;s personal, password-protected reading list. If that&apos;s you, enter the password below. If
+        not, this project is open source — you&apos;re welcome to{" "}
         <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
           deploy your own copy
         </a>{" "}

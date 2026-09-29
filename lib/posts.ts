@@ -46,7 +46,7 @@ export function parseFilters(params: Record<string, string | string[] | undefine
 
   return {
     q: first(params.q)?.trim() || undefined,
-    domain: pick(first(params.domain), DOMAIN_TAGS),
+    domain: first(params.domain)?.trim().slice(0, 30) || undefined, // custom tags allowed
     intent: pick(first(params.intent), INTENT_TAGS),
     type: pick(first(params.type), RESOURCE_TYPES),
     starred: first(params.starred) === "1",

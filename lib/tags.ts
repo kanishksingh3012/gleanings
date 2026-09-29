@@ -13,8 +13,24 @@ const TAG_STYLES: Record<string, string> = {
   Inspiration: "bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300",
 };
 
-const FALLBACK = "bg-default text-default-foreground";
+// Custom tags get a stable hue picked from the tag's name.
+const CUSTOM_STYLES = [
+  "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+  "bg-lime-500/15 text-lime-700 dark:text-lime-300",
+  "bg-teal-500/15 text-teal-700 dark:text-teal-300",
+  "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300",
+  "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
+  "bg-purple-500/15 text-purple-700 dark:text-purple-300",
+];
 
 export function tagClass(tag: string): string {
-  return TAG_STYLES[tag] ?? FALLBACK;
+  if (TAG_STYLES[tag]) return TAG_STYLES[tag];
+  let hash = 0;
+  for (const char of tag.toLowerCase()) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return CUSTOM_STYLES[hash % CUSTOM_STYLES.length];
+}
+
+/** Trims, collapses whitespace and caps length; "" means not a usable tag. */
+export function cleanTag(tag: string): string {
+  return tag.trim().replace(/\s+/g, " ").slice(0, 30);
 }

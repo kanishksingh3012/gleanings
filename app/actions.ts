@@ -3,6 +3,7 @@
 import { assertCanEdit, clearEditCookie, tryUnlock } from "@/lib/auth";
 import type { FoundResource, Resource } from "@/lib/resources";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { cleanTag } from "@/lib/tags";
 
 const AVATAR_BUCKET = "post-avatars";
 const MAX_NOTE_LENGTH = 5000;
@@ -45,6 +46,11 @@ export async function togglePostFavorite(urn: string, isFavorite: boolean) {
 
 export async function setPostNote(urn: string, note: string) {
   await updatePost(urn, { note: note.trim().slice(0, MAX_NOTE_LENGTH) || null });
+}
+
+export async function setPostTags(urn: string, tags: string[]) {
+  const clean = [...new Set(tags.map(cleanTag).filter(Boolean))].slice(0, 12);
+  await updatePost(urn, { domain_tags: clean });
 }
 
 export async function deletePost(urn: string) {

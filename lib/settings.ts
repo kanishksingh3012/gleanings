@@ -8,6 +8,7 @@ export interface Settings {
   sort: SortOrder;
   density: "comfortable" | "compact";
   startView: "library" | "resources" | "starred";
+  customTags: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -15,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sort: "newest",
   density: "comfortable",
   startView: "library",
+  customTags: [],
 };
 
 const KEY = "gleanings-settings";

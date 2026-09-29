@@ -10,6 +10,7 @@ import { useEdit } from "./edit-context";
 import { FoundResources } from "./found-resources";
 import { NoteField } from "./note-field";
 import { TagList } from "./tag-chip";
+import { TagEditor } from "./tag-editor";
 
 interface PostDetailDrawerProps {
   post: Post | null;
@@ -17,13 +18,15 @@ interface PostDetailDrawerProps {
   onClose: () => void;
   onNote: (post: Post, note: string) => void;
   onAddResource: (post: Post, resource: FoundResource) => void;
+  onTags: (post: Post, tags: string[]) => void;
+  tagOptions: string[];
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h3 className="text-xs font-medium tracking-wide text-muted uppercase">{children}</h3>;
 }
 
-export function PostDetailDrawer({ post, savedResourceUrls, onClose, onNote, onAddResource }: PostDetailDrawerProps) {
+export function PostDetailDrawer({ post, savedResourceUrls, onClose, onNote, onAddResource, onTags, tagOptions }: PostDetailDrawerProps) {
   const { editable, requireEdit } = useEdit();
   const state = useOverlayState({ isOpen: post !== null, onOpenChange: (open) => !open && onClose() });
   // Posts saved before resource detection only have extracted_link — offer it too.
@@ -54,7 +57,14 @@ export function PostDetailDrawer({ post, savedResourceUrls, onClose, onNote, onA
 
                 <Drawer.Body className="flex flex-col gap-6">
                   <p className="max-w-measure text-[15px] leading-7">{post.summary}</p>
-                  <TagList tags={[...post.domain_tags, ...post.intent_tags]} />
+                  {editable ? (
+                    <div className="flex flex-col gap-2">
+                      <TagList tags={post.intent_tags} />
+                      <TagEditor tags={post.domain_tags} suggestions={tagOptions} onChange={(tags) => onTags(post, tags)} />
+                    </div>
+                  ) : (
+                    <TagList tags={[...post.domain_tags, ...post.intent_tags]} />
+                  )}
 
                   {resources.length > 0 && (
                     <section className="flex flex-col gap-2">
