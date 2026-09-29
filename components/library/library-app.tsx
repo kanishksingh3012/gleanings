@@ -221,7 +221,12 @@ export function LibraryApp({ initialPosts, initialResources, initialParams }: Li
         <header className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-semibold tracking-tight">Gleanings</h1>
+              <div className="flex items-baseline gap-2">
+                <h1 className="text-2xl font-semibold tracking-tight">Gleanings</h1>
+                <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer" className="text-xs text-muted hover:text-foreground hover:underline">
+                  by @kanishk
+                </a>
+              </div>
               <p className="text-sm text-muted">{lastSaved ? `Last saved ${timeAgo(lastSaved)}` : "Nothing saved yet"}</p>
             </div>
             <div className="flex items-center gap-1">
@@ -302,11 +307,6 @@ export function LibraryApp({ initialPosts, initialResources, initialParams }: Li
           </main>
         )}
 
-        <footer className="mt-8 flex justify-center text-xs text-muted">
-          <a href={AUTHOR_URL} target="_blank" rel="noopener noreferrer" className="hover:text-foreground hover:underline">
-            by @kanishk
-          </a>
-        </footer>
       </div>
 
       <PostDetailDrawer

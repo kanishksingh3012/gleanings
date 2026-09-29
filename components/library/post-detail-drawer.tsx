@@ -26,7 +26,12 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function PostDetailDrawer({ post, savedResourceUrls, onClose, onNote, onAddResource }: PostDetailDrawerProps) {
   const { editable, requireEdit } = useEdit();
   const state = useOverlayState({ isOpen: post !== null, onOpenChange: (open) => !open && onClose() });
-  const resources = post?.resources ?? [];
+  // Posts saved before resource detection only have extracted_link — offer it too.
+  const resources: FoundResource[] = post?.resources?.length
+    ? post.resources
+    : post?.extracted_link
+      ? [{ title: post.link_context || hostname(post.extracted_link), url: post.extracted_link, description: post.link_context ?? "", type: "Other" }]
+      : [];
 
   return (
     <Drawer state={state}>
@@ -50,21 +55,6 @@ export function PostDetailDrawer({ post, savedResourceUrls, onClose, onNote, onA
                 <Drawer.Body className="flex flex-col gap-6">
                   <p className="max-w-measure text-[15px] leading-7">{post.summary}</p>
                   <TagList tags={[...post.domain_tags, ...post.intent_tags]} />
-
-                  {post.extracted_link && resources.length === 0 && (
-                    <a
-                      href={post.extracted_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex flex-col gap-0.5 rounded-lg bg-surface-secondary p-3 text-sm hover:bg-surface-tertiary"
-                    >
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <ExternalLinkIcon className="size-3.5" />
-                        {hostname(post.extracted_link)}
-                      </span>
-                      {post.link_context && <span className="text-muted">{post.link_context}</span>}
-                    </a>
-                  )}
 
                   {resources.length > 0 && (
                     <section className="flex flex-col gap-2">
