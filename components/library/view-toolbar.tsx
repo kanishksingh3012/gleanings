@@ -11,6 +11,8 @@ interface ViewToolbarProps {
 }
 
 /** Sort + grid density; changes are remembered as this device's defaults. */
+const CHEVRON = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`;
+
 export function ViewToolbar({ settings, onChange }: ViewToolbarProps) {
   return (
     <div className="flex shrink-0 items-center gap-2">
@@ -21,7 +23,9 @@ export function ViewToolbar({ settings, onChange }: ViewToolbarProps) {
         id="sort"
         value={settings.sort}
         onChange={(e) => onChange({ sort: e.target.value as SortOrder })}
-        className="h-9 rounded-xl border border-border bg-surface px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        // Own chevron with room to breathe — the native arrow hugs the right edge.
+        style={{ backgroundImage: CHEVRON }}
+        className="h-9 appearance-none rounded-xl border border-border bg-surface bg-[length:14px] bg-[position:right_10px_center] bg-no-repeat pr-8 pl-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         {(Object.keys(SORT_LABELS) as SortOrder[]).map((sort) => (
           <option key={sort} value={sort}>
