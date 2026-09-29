@@ -2,34 +2,30 @@
 
 import { Button, Drawer, Separator, useOverlayState } from "@heroui/react";
 import { ExternalLinkIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { setPostNote } from "@/app/actions";
-import { hostname } from "@/lib/format";
+import { hostname, timeAgo } from "@/lib/format";
 import type { Post } from "@/lib/posts";
+import type { FoundResource } from "@/lib/resources";
 import { AuthorLine } from "./author-line";
+import { useEdit } from "./edit-context";
 import { FoundResources } from "./found-resources";
 import { NoteField } from "./note-field";
 import { TagList } from "./tag-chip";
 
 interface PostDetailDrawerProps {
   post: Post | null;
-  closeHref: string;
-  savedLabel: string | null;
-  savedResourceUrls: string[];
-  canEdit: boolean;
+  savedResourceUrls: Set<string>;
+  onClose: () => void;
+  onNote: (post: Post, note: string) => void;
+  onAddResource: (post: Post, resource: FoundResource) => void;
 }
 
-function SectionLabel({ children }: { children: string }) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h3 className="text-xs font-medium tracking-wide text-muted uppercase">{children}</h3>;
 }
 
-/** Slide-over driven by the `?post=` URL param, so a post can be linked to directly. */
-export function PostDetailDrawer({ post, closeHref, savedLabel, savedResourceUrls, canEdit }: PostDetailDrawerProps) {
-  const router = useRouter();
-  const state = useOverlayState({
-    isOpen: post !== null,
-    onOpenChange: (open) => !open && router.replace(closeHref, { scroll: false }),
-  });
+export function PostDetailDrawer({ post, savedResourceUrls, onClose, onNote, onAddResource }: PostDetailDrawerProps) {
+  const { editable, requireEdit } = useEdit();
+  const state = useOverlayState({ isOpen: post !== null, onOpenChange: (open) => !open && onClose() });
   const resources = post?.resources ?? [];
 
   return (
@@ -45,7 +41,7 @@ export function PostDetailDrawer({ post, closeHref, savedLabel, savedResourceUrl
                     name={post.author_name}
                     url={post.author_url}
                     avatarUrl={post.author_avatar_url}
-                    meta={savedLabel ? `Saved ${savedLabel}` : undefined}
+                    meta={`Saved ${timeAgo(post.synced_at)}`}
                     size="md"
                   />
                   <Drawer.Heading className="text-xl leading-snug text-balance">{post.title}</Drawer.Heading>
@@ -72,30 +68,31 @@ export function PostDetailDrawer({ post, closeHref, savedLabel, savedResourceUrl
 
                   {resources.length > 0 && (
                     <section className="flex flex-col gap-2">
-                      <SectionLabel>Found in this post</SectionLabel>
+                      <SectionLabel>
+                        Found in this post <span className="normal-case tracking-normal">· tap + to keep in Resources</span>
+                      </SectionLabel>
                       <FoundResources
-                        sourceUrn={post.linkedin_urn}
                         resources={resources}
                         savedUrls={savedResourceUrls}
-                        canEdit={canEdit}
+                        onAdd={(resource) => onAddResource(post, resource)}
                       />
                     </section>
                   )}
 
-                  {(canEdit || post.note) && (
-                    <section className="flex flex-col gap-2">
-                      <SectionLabel>Note</SectionLabel>
-                      {canEdit ? (
-                        <NoteField
-                          key={post.linkedin_urn}
-                          initial={post.note}
-                          onSave={(note) => setPostNote(post.linkedin_urn, note)}
-                        />
-                      ) : (
-                        <p className="text-sm whitespace-pre-wrap">{post.note}</p>
-                      )}
-                    </section>
-                  )}
+                  <section className="flex flex-col gap-2">
+                    <SectionLabel>Note</SectionLabel>
+                    {editable ? (
+                      <NoteField key={post.linkedin_urn} initial={post.note} onSave={(note) => onNote(post, note)} />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => requireEdit(() => {})}
+                        className="rounded-lg border border-dashed border-border p-3 text-left text-sm text-muted hover:bg-default"
+                      >
+                        {post.note ? <span className="whitespace-pre-wrap text-foreground">{post.note}</span> : "Add a note…"}
+                      </button>
+                    )}
+                  </section>
 
                   <Separator />
 

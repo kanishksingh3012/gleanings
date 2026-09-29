@@ -20,35 +20,11 @@ export interface Resource extends FoundResource {
   created_at: string;
 }
 
-export interface ResourceFilters {
-  q?: string;
-  type?: string;
-  starred?: boolean;
-}
-
-function escapeForOr(value: string): string {
-  return value.replace(/[,()*\\]/g, " ");
-}
-
-export async function getResources(filters: ResourceFilters): Promise<Resource[]> {
-  let query = getSupabaseAdmin().from("resources").select("*").order("created_at", { ascending: false });
-
-  if (filters.q) {
-    const term = `%${escapeForOr(filters.q)}%`;
-    query = query.or(`title.ilike.${term},description.ilike.${term},url.ilike.${term},note.ilike.${term}`);
-  }
-  if (filters.type) query = query.eq("type", filters.type);
-  if (filters.starred) query = query.eq("is_favorite", true);
-
-  const { data, error } = await query;
+export async function getAllResources(): Promise<Resource[]> {
+  const { data, error } = await getSupabaseAdmin()
+    .from("resources")
+    .select("*")
+    .order("created_at", { ascending: false });
   if (error) throw new Error(`Failed to load resources: ${error.message}`);
   return (data ?? []) as Resource[];
-}
-
-/** URLs already kept, so found resources can show "Added". */
-export async function getSavedResourceUrls(urls: string[]): Promise<Set<string>> {
-  if (urls.length === 0) return new Set();
-  const { data, error } = await getSupabaseAdmin().from("resources").select("url").in("url", urls);
-  if (error) throw new Error(`Failed to load resources: ${error.message}`);
-  return new Set((data ?? []).map((row) => row.url as string));
 }

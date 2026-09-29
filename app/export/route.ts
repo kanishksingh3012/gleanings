@@ -1,5 +1,5 @@
-import { getPosts, type Post } from "@/lib/posts";
-import { getResources, type Resource } from "@/lib/resources";
+import { getAllPosts, type Post } from "@/lib/posts";
+import { getAllResources, type Resource } from "@/lib/resources";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +29,8 @@ export async function GET(request: Request) {
 
   const body =
     type === "resources"
-      ? `# Gleanings — Resources\n\n${(await getResources({})).map(resourceToMarkdown).join("\n")}\n`
-      : `# Gleanings — Library\n\n${(await getPosts({ view: "all" })).map(postToMarkdown).join("\n\n---\n\n")}\n`;
+      ? `# Gleanings — Resources\n\n${(await getAllResources()).map(resourceToMarkdown).join("\n")}\n`
+      : `# Gleanings — Library\n\n${(await getAllPosts()).filter((p) => p.status === "published").map(postToMarkdown).join("\n\n---\n\n")}\n`;
 
   return new Response(body, {
     headers: {

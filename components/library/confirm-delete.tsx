@@ -2,6 +2,7 @@
 
 import { AlertDialog, Button, useOverlayState } from "@heroui/react";
 import { Trash2Icon } from "lucide-react";
+import { useEdit } from "./edit-context";
 
 interface ConfirmDeleteProps {
   itemLabel: string;
@@ -9,13 +10,20 @@ interface ConfirmDeleteProps {
   onConfirm: () => void;
 }
 
-/** Icon button that opens a confirmation dialog before a permanent delete. */
+/** Icon button that asks for confirmation (and unlocking, if needed) before a permanent delete. */
 export function ConfirmDelete({ itemLabel, description, onConfirm }: ConfirmDeleteProps) {
   const state = useOverlayState();
+  const { requireEdit } = useEdit();
 
   return (
     <>
-      <Button isIconOnly size="sm" variant="ghost" aria-label={`Delete ${itemLabel}`} onPress={state.open}>
+      <Button
+        isIconOnly
+        size="sm"
+        variant="ghost"
+        aria-label={`Delete ${itemLabel}`}
+        onPress={() => requireEdit(state.open)}
+      >
         <Trash2Icon className="size-4 text-muted" />
       </Button>
       <AlertDialog isOpen={state.isOpen} onOpenChange={state.setOpen}>

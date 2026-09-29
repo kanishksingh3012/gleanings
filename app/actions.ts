@@ -1,42 +1,32 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { assertCanEdit, clearEditCookie, tryUnlock } from "@/lib/auth";
-import type { FoundResource } from "@/lib/resources";
+import type { FoundResource, Resource } from "@/lib/resources";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 const AVATAR_BUCKET = "post-avatars";
 const MAX_NOTE_LENGTH = 5000;
 
-function done() {
-  revalidatePath("/");
-}
-
 async function updatePost(urn: string, fields: Record<string, unknown>) {
   await assertCanEdit();
   const { error } = await getSupabaseAdmin().from("posts").update(fields).eq("linkedin_urn", urn);
   if (error) throw new Error(error.message);
-  done();
 }
 
 async function updateResource(id: string, fields: Record<string, unknown>) {
   await assertCanEdit();
   const { error } = await getSupabaseAdmin().from("resources").update(fields).eq("id", id);
   if (error) throw new Error(error.message);
-  done();
 }
 
 // --- Access -----------------------------------------------------------------
 
 export async function unlock(password: string): Promise<{ ok: boolean }> {
-  const ok = await tryUnlock(password);
-  if (ok) done();
-  return { ok };
+  return { ok: await tryUnlock(password) };
 }
 
 export async function lock() {
   await clearEditCookie();
-  done();
 }
 
 // --- Posts ------------------------------------------------------------------
@@ -75,15 +65,13 @@ export async function deletePost(urn: string) {
   if (key) {
     await supabase.storage.from(AVATAR_BUCKET).remove([decodeURIComponent(key)]);
   }
-
-  done();
 }
 
 // --- Resources --------------------------------------------------------------
 
-export async function addResource(sourceUrn: string, resource: FoundResource) {
+export async function addResource(sourceUrn: string, resource: FoundResource): Promise<Resource | null> {
   await assertCanEdit();
-  const { error } = await getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from("resources")
     .upsert(
       {
@@ -94,9 +82,11 @@ export async function addResource(sourceUrn: string, resource: FoundResource) {
         source_urn: sourceUrn,
       },
       { onConflict: "url", ignoreDuplicates: true },
-    );
+    )
+    .select()
+    .maybeSingle();
   if (error) throw new Error(error.message);
-  done();
+  return data as Resource | null;
 }
 
 export async function toggleResourceFavorite(id: string, isFavorite: boolean) {
@@ -111,5 +101,4 @@ export async function deleteResource(id: string) {
   await assertCanEdit();
   const { error } = await getSupabaseAdmin().from("resources").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  done();
 }

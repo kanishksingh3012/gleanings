@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="#18181b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <style>@media (prefers-color-scheme: dark) { svg { stroke: #fafafa; } }</style>
+  <path d="M16 29V9"/>
+  <path d="M16 9c-1.6-1.4-1.6-4.6 0-6 1.6 1.4 1.6 4.6 0 6z"/>
+  <path d="M16 15c-3.2.4-5.2-1.6-5-4.6 3.2-.4 5.2 1.6 5 4.6zM16 15c3.2.4 5.2-1.6 5-4.6-3.2-.4-5.2 1.6-5 4.6z"/>
+  <path d="M16 21c-3.2.4-5.2-1.6-5-4.6 3.2-.4 5.2 1.6 5 4.6zM16 21c3.2.4 5.2-1.6 5-4.6-3.2-.4-5.2 1.6-5 4.6z"/>
+</svg>

@@ -54,50 +54,12 @@ export function parseFilters(params: Record<string, string | string[] | undefine
   };
 }
 
-// PostgREST's `or` filter syntax treats commas/parens as separators.
-function escapeForOr(value: string): string {
-  return value.replace(/[,()*\\]/g, " ");
-}
-
-export async function getPosts(filters: PostFilters): Promise<Post[]> {
-  let query = getSupabaseAdmin()
+/** Whole library in one query; filtering and sorting happen in the browser. */
+export async function getAllPosts(): Promise<Post[]> {
+  const { data, error } = await getSupabaseAdmin()
     .from("posts")
     .select("*")
-    .eq("status", filters.view === "archived" ? "archived" : "published")
     .order("created_at", { ascending: false });
-
-  if (filters.q) {
-    const term = `%${escapeForOr(filters.q)}%`;
-    query = query.or(
-      `title.ilike.${term},summary.ilike.${term},author_name.ilike.${term},note.ilike.${term}`,
-    );
-  }
-  if (filters.domain) query = query.contains("domain_tags", [filters.domain]);
-  if (filters.intent) query = query.contains("intent_tags", [filters.intent]);
-  if (filters.starred) query = query.eq("is_favorite", true);
-
-  const { data, error } = await query;
   if (error) throw new Error(`Failed to load posts: ${error.message}`);
   return (data ?? []) as Post[];
-}
-
-export async function getPostByUrn(urn: string): Promise<Post | null> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("posts")
-    .select("*")
-    .eq("linkedin_urn", urn)
-    .maybeSingle();
-  if (error) throw new Error(`Failed to load post: ${error.message}`);
-  return (data as Post | null) ?? null;
-}
-
-export async function getLastSyncedAt(): Promise<string | null> {
-  const { data, error } = await getSupabaseAdmin()
-    .from("posts")
-    .select("synced_at")
-    .order("synced_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`Failed to load sync status: ${error.message}`);
-  return data?.synced_at ?? null;
 }

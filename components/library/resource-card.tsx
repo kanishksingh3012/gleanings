@@ -1,15 +1,14 @@
 "use client";
 
-import { Card } from "@heroui/react";
-import { ExternalLinkIcon } from "lucide-react";
-import Link from "next/link";
-import { deleteResource, setResourceNote, toggleResourceFavorite } from "@/app/actions";
+import { Button, Card, useOverlayState } from "@heroui/react";
+import { ExternalLinkIcon, NotebookPenIcon } from "lucide-react";
 import { hostname, timeAgo } from "@/lib/format";
 import type { Resource } from "@/lib/resources";
+import { cn } from "@/lib/utils";
 import { ConfirmDelete } from "./confirm-delete";
+import { useEdit } from "./edit-context";
 import { FavoriteButton } from "./favorite-button";
-import { NoteField } from "./note-field";
-import { useAction } from "./use-action";
+import { NoteModal } from "./note-modal";
 
 const TYPE_STYLES: Record<string, string> = {
   Tool: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
@@ -20,14 +19,21 @@ const TYPE_STYLES: Record<string, string> = {
   Other: "bg-default text-default-foreground",
 };
 
-interface ResourceCardProps {
-  resource: Resource;
-  sourceHref: string | null;
-  canEdit: boolean;
+export interface ResourceHandlers {
+  onToggleStar: (resource: Resource) => void;
+  onNote: (resource: Resource, note: string) => void;
+  onDelete: (resource: Resource) => void;
+  onOpenSource: (urn: string) => void;
 }
 
-export function ResourceCard({ resource, sourceHref, canEdit }: ResourceCardProps) {
-  const { run } = useAction();
+interface ResourceCardProps extends ResourceHandlers {
+  resource: Resource;
+  compact: boolean;
+}
+
+export function ResourceCard({ resource, compact, onToggleStar, onNote, onDelete, onOpenSource }: ResourceCardProps) {
+  const noteModal = useOverlayState();
+  const { requireEdit } = useEdit();
 
   return (
     <Card className="gap-3">
@@ -49,42 +55,45 @@ export function ResourceCard({ resource, sourceHref, canEdit }: ResourceCardProp
             <ExternalLinkIcon className="size-3.5 shrink-0 text-muted" />
           </a>
         </div>
-        {canEdit && (
-          <div className="-mt-1 -mr-2 flex shrink-0 items-center">
-            <FavoriteButton
-              isFavorite={resource.is_favorite}
-              label={resource.title}
-              onToggle={(next) => toggleResourceFavorite(resource.id, next)}
-            />
-            <ConfirmDelete
-              itemLabel={resource.title}
-              description={`"${resource.title}" will be removed from your Resources. The post it came from stays in your library.`}
-              onConfirm={() => run(() => deleteResource(resource.id), "Resource removed")}
-            />
-          </div>
-        )}
+        <div className="-mt-1 -mr-2 flex shrink-0 items-center">
+          <FavoriteButton isFavorite={resource.is_favorite} label={resource.title} onPress={() => onToggleStar(resource)} />
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
+            aria-label={resource.note ? `Edit note on ${resource.title}` : `Add note to ${resource.title}`}
+            onPress={() => requireEdit(noteModal.open)}
+          >
+            <NotebookPenIcon className={cn("size-4", resource.note ? "text-accent" : "text-muted")} />
+          </Button>
+          <ConfirmDelete
+            itemLabel={resource.title}
+            description={`"${resource.title}" will be removed from your Resources. The post it came from stays in your library.`}
+            onConfirm={() => onDelete(resource)}
+          />
+        </div>
       </Card.Header>
 
-      {resource.description && (
+      {!compact && resource.description && (
         <Card.Content>
           <Card.Description className="text-sm leading-6">{resource.description}</Card.Description>
         </Card.Content>
       )}
 
-      {canEdit ? (
-        <NoteField initial={resource.note} onSave={(note) => setResourceNote(resource.id, note)} />
-      ) : (
-        resource.note && <p className="text-sm whitespace-pre-wrap">{resource.note}</p>
-      )}
+      {resource.note && <p className="rounded-lg bg-surface-secondary p-2.5 text-sm whitespace-pre-wrap">{resource.note}</p>}
 
       <Card.Footer className="justify-between text-xs text-muted">
         <span>Added {timeAgo(resource.created_at)}</span>
-        {sourceHref && (
-          <Link href={sourceHref} scroll={false} className="hover:underline">
+        {resource.source_urn && (
+          <button type="button" onClick={() => onOpenSource(resource.source_urn!)} className="hover:underline">
             From post →
-          </Link>
+          </button>
         )}
       </Card.Footer>
+
+      {noteModal.isOpen && (
+        <NoteModal state={noteModal} title={resource.title} initial={resource.note} onSave={(note) => onNote(resource, note)} />
+      )}
     </Card>
   );
 }
