@@ -1,4 +1,4 @@
-const LOG_PREFIX = "[LI-Sync]";
+const LOG_PREFIX = "[Gleanings]";
 const SYNC_DELAY_MS = 300;
 const MAX_STORED_URNS = 5000;
 
@@ -11,19 +11,15 @@ function originPattern(urlString) {
   return `${url.origin}/*`;
 }
 
-// Mirrors manifest.json's content_scripts matches: the saved-posts list
-// (many posts, bulk sync) or an individual post's own permalink page (just
-// that one post) — content.js's card-detection logic already handles both
-// generically (a list page yields many card elements, a single-post page
-// yields one), so the only thing that differs here is which tab we target.
-const SUPPORTED_LINKEDIN_PATTERNS = [
-  /^https:\/\/www\.linkedin\.com\/my-items\/saved-posts\//,
-  /^https:\/\/www\.linkedin\.com\/feed\/update\//,
-  /^https:\/\/www\.linkedin\.com\/posts\//,
+// A single post's own page, or a LinkedIn short link that redirects to one.
+const POST_URL_PATTERNS = [
+  /^https:\/\/(www\.)?linkedin\.com\/feed\/update\/urn:li:(activity|share|ugcPost):\d+/,
+  /^https:\/\/(www\.)?linkedin\.com\/posts\//,
+  /^https:\/\/lnkd\.in\//,
 ];
 
-function isSupportedLinkedInUrl(url) {
-  return Boolean(url) && SUPPORTED_LINKEDIN_PATTERNS.some((pattern) => pattern.test(url));
+function isPostUrl(url) {
+  return Boolean(url) && POST_URL_PATTERNS.some((pattern) => pattern.test(url));
 }
 
 async function getSyncedUrns() {
@@ -86,7 +82,13 @@ async function syncOne(item, backendUrl, apiSecret) {
   }
 }
 
-async function runSync() {
+/**
+ * Reads backendUrl/apiSecret from storage and confirms we still hold host
+ * permission for that origin. Returns { error } or { backendUrl, apiSecret }.
+ * Shared by both sync entry points (popup-triggered and widget-triggered)
+ * since both need the exact same preconditions checked.
+ */
+async function getBackendConfig() {
   const { backendUrl, apiSecret } = await chrome.storage.sync.get(["backendUrl", "apiSecret"]);
   if (!backendUrl || !apiSecret) {
     return { error: "Not configured. Open Options and set a Backend URL + API Secret Key." };
@@ -104,39 +106,17 @@ async function runSync() {
     return { error: "Missing permission for the backend URL. Re-save it in Options." };
   }
 
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!activeTab || !isSupportedLinkedInUrl(activeTab.url)) {
-    return {
-      error:
-        "Open a LinkedIn saved-posts list or an individual post's own page first, then click Sync.",
-    };
-  }
-  const tab = activeTab;
+  return { backendUrl, apiSecret };
+}
 
-  let scrapeResult;
-  try {
-    // The listener must be registered BEFORE sending RUN_SCRAPE: the content
-    // script broadcasts SCRAPE_RESULT before it resolves its own sendResponse
-    // (which can be ~20s later, after scrollAndSettle), so awaiting
-    // chrome.tabs.sendMessage first would register this listener too late
-    // and miss the message.
-    scrapeResult = await new Promise((resolve, reject) => {
-      const listener = (message) => {
-        if (message?.type === "SCRAPE_RESULT") {
-          chrome.runtime.onMessage.removeListener(listener);
-          resolve(message.payload);
-        }
-      };
-      chrome.runtime.onMessage.addListener(listener);
-      chrome.tabs.sendMessage(tab.id, { type: "RUN_SCRAPE" }).catch((err) => {
-        chrome.runtime.onMessage.removeListener(listener);
-        reject(err);
-      });
-    });
-  } catch (err) {
-    return { error: `Could not reach the LinkedIn tab's content script: ${err}` };
-  }
-
+/**
+ * Takes an already-scraped {extracted, skipped} payload and runs the
+ * dedup + sequential-POST sync loop, broadcasting progress along the way.
+ * Shared by runSync() (which first has to find a tab and ask its content
+ * script to scrape) and the widget flow (which already has the payload,
+ * since the button lives inside the tab it's syncing — no tab lookup needed).
+ */
+async function processScrapeResult(scrapeResult, backendUrl, apiSecret) {
   const syncedUrns = await getSyncedUrns();
   const queue = scrapeResult.extracted.filter((item) => !syncedUrns.has(item.linkedin_urn));
   const alreadyKnownCount = scrapeResult.extracted.length - queue.length;
@@ -200,24 +180,133 @@ async function runSync() {
   return stats;
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "START_SYNC") {
-    if (currentRunStats) {
-      sendResponse({ error: "A sync is already in progress." });
-      return true;
+
+const PAGE_LOAD_TIMEOUT_MS = 30_000;
+const CONTENT_SCRIPT_RETRIES = 20;
+
+function waitForTabComplete(tabId) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error("The post took too long to load."));
+    }, PAGE_LOAD_TIMEOUT_MS);
+    function listener(id, info) {
+      if (id === tabId && info.status === "complete") {
+        clearTimeout(timer);
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
     }
-    runSync().then(sendResponse);
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+/** Asks a tab's content script to extract its post, retrying until the script is injected. */
+async function extractFromTab(tabId) {
+  for (let attempt = 0; attempt < CONTENT_SCRIPT_RETRIES; attempt++) {
+    try {
+      const result = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_SINGLE_POST" });
+      if (result) return result;
+    } catch {
+      // Content script not ready yet (or page not on linkedin.com).
+    }
+    await sleep(1000);
+  }
+  throw new Error("Couldn't read that page. Is it a LinkedIn post?");
+}
+
+/**
+ * Saves a post from its link without the user leaving the page: opens it in
+ * a background tab, extracts it with the same logic as the on-page Save, and
+ * always closes the tab afterwards.
+ */
+async function saveUrl(url) {
+  if (!isPostUrl(url)) {
+    return { error: "Paste a link to a single LinkedIn post (…/feed/update/… or …/posts/…)." };
+  }
+  const config = await getBackendConfig();
+  if (config.error) return config;
+
+  let tabId;
+  try {
+    const tab = await chrome.tabs.create({ url, active: false });
+    tabId = tab.id;
+    await waitForTabComplete(tabId);
+    const scrapeResult = await extractFromTab(tabId);
+    return await processScrapeResult(scrapeResult, config.backendUrl, config.apiSecret);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (tabId !== undefined) chrome.tabs.remove(tabId).catch(() => {});
+  }
+}
+
+async function syncExtracted(scrapeResult) {
+  const config = await getBackendConfig();
+  if (config.error) return config;
+  return processScrapeResult(scrapeResult, config.backendUrl, config.apiSecret);
+}
+
+/** Only one save at a time: saves are sequential to respect the AI's rate limit. */
+function exclusive(task) {
+  if (currentRunStats) return Promise.resolve({ error: "Another save is in progress — try again in a moment." });
+  return task();
+}
+
+// --- Right-click "Save to Gleanings" ------------------------------------------
+
+const POST_URL_MATCH = [
+  "https://www.linkedin.com/feed/update/*",
+  "https://www.linkedin.com/posts/*",
+  "https://lnkd.in/*",
+];
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: "save-link",
+      title: "Save post to Gleanings",
+      contexts: ["link"],
+      targetUrlPatterns: POST_URL_MATCH,
+    });
+    chrome.contextMenus.create({
+      id: "save-page",
+      title: "Save this post to Gleanings",
+      contexts: ["page"],
+      documentUrlPatterns: POST_URL_MATCH,
+    });
+  });
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (!tab?.id) return;
+  const notify = (payload) => chrome.tabs.sendMessage(tab.id, { type: "SAVE_STATUS", ...payload }).catch(() => {});
+  notify({ pending: true });
+
+  const result =
+    info.menuItemId === "save-page"
+      ? await exclusive(async () => syncExtracted(await extractFromTab(tab.id)))
+      : await exclusive(() => saveUrl(info.linkUrl));
+  notify({ result });
+});
+
+// --- Messages from the page box and popup --------------------------------------
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "SAVE_URL") {
+    exclusive(() => saveUrl(message.url)).then(sendResponse);
+    return true;
+  }
+  if (message?.type === "SYNC_EXTRACTED") {
+    exclusive(() => syncExtracted(message.payload)).then(sendResponse);
     return true;
   }
   if (message?.type === "GET_STATUS") {
-    if (currentRunStats) {
-      sendResponse({ inProgress: true, stats: currentRunStats });
-    } else {
-      chrome.storage.local
-        .get(["lastRunStats"])
-        .then(({ lastRunStats }) => sendResponse({ inProgress: false, lastRunStats }));
-    }
+    chrome.storage.local.get(["lastRunStats"]).then(({ lastRunStats }) => sendResponse({ lastRunStats }));
     return true;
+  }
+  if (message?.type === "OPEN_OPTIONS") {
+    chrome.runtime.openOptionsPage();
   }
   return undefined;
 });

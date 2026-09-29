@@ -1,36 +1,10 @@
-const LOG_PREFIX = "[LI-Sync]";
+const LOG_PREFIX = "[Gleanings]";
 const MAX_RAW_TEXT_LENGTH = 20_000;
 const UI_CHROME_LINE = /^(like|comment|share|send|repost|·|\d+\s*(h|hr|d|w|mo|y)\b.*)$/i;
+const POST_PATH = /^\/(feed\/update|posts)\//;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function getCardElements() {
-  const scoped = document.querySelectorAll(".reusable-search__result-container");
-  if (scoped.length > 0) return Array.from(scoped);
-  // Fallback: the class above is obfuscated/renamed on this run of LinkedIn's
-  // markup — fall back to a structural heuristic instead of giving up.
-  return Array.from(document.querySelectorAll("div[data-urn], li[data-urn]"));
-}
-
-function extractUrn(card) {
-  const own = card.getAttribute("data-urn");
-  if (own) return own;
-
-  const ancestor = card.closest("[data-urn]");
-  if (ancestor && ancestor !== card) return ancestor.getAttribute("data-urn");
-
-  const descendant = card.querySelector("[data-urn]");
-  if (descendant) return descendant.getAttribute("data-urn");
-
-  const anchors = card.querySelectorAll("a[href]");
-  for (const anchor of anchors) {
-    const match = anchor.href.match(/urn:li:(activity|share|ugcPost):\d+/);
-    if (match) return match[0];
-  }
-
-  return null;
 }
 
 function canonicalizeUrl(href) {
@@ -42,140 +16,66 @@ function canonicalizeUrl(href) {
   }
 }
 
-function extractAuthor(card) {
-  // LinkedIn often wraps the same profile in two separate anchors — one
-  // around just the avatar image (empty text) and one around the visible
-  // name — so scan all candidates rather than assuming the first is the
-  // one with text.
-  const anchors = card.querySelectorAll('a[href*="/in/"], a[href*="/company/"]');
-  for (const anchor of anchors) {
-    // The connection-degree badge ("· 3rd+") is often nested inside the same
-    // anchor as the name, on its own line — take just the first non-empty
-    // line rather than the whole innerText.
-    const rawText = anchor.innerText?.trim();
-    const firstLine = rawText?.split("\n").find((line) => line.trim())?.trim();
+function isPostPage() {
+  return POST_PATH.test(window.location.pathname);
+}
+
+// --- Extraction (single post page) -------------------------------------------
+// LinkedIn's markup uses obfuscated, ever-changing class names, but a post's
+// own page URL always carries its activity ID — so the URN comes from the URL,
+// and author/text come from structural selectors inside the main landmark.
+
+function extractUrnFromUrl(href) {
+  let match = href.match(/urn:li:(activity|share|ugcPost):(\d+)/);
+  if (match) return `urn:li:${match[1]}:${match[2]}`;
+  match = href.match(/urn%3Ali%3A(activity|share|ugcPost)%3A(\d+)/i);
+  if (match) return `urn:li:${match[1]}:${match[2]}`;
+  match = href.match(/-activity-(\d+)-/);
+  if (match) return `urn:li:activity:${match[1]}`;
+  return null;
+}
+
+function extractAuthor(root) {
+  // The same profile is often linked twice (avatar-only + name), and the name
+  // anchor can nest the connection badge ("· 3rd+") on its own line.
+  for (const anchor of root.querySelectorAll('a[href*="/in/"], a[href*="/company/"]')) {
+    const firstLine = anchor.innerText?.trim().split("\n").find((line) => line.trim())?.trim();
     const name = firstLine || anchor.getAttribute("aria-label")?.trim();
-    if (name) {
-      return { authorName: name, authorUrl: canonicalizeUrl(anchor.href), authorAnchor: anchor };
-    }
+    if (name) return { authorName: name, authorUrl: canonicalizeUrl(anchor.href), authorAnchor: anchor };
   }
   return null;
 }
 
-function extractAvatar(card, authorAnchor) {
-  const nearImg = authorAnchor?.closest("div")?.querySelector("img") ?? card.querySelector("img");
-  const src = nearImg?.getAttribute("src");
-  if (!src || src.startsWith("data:")) return null;
-  return src;
+function extractAvatar(root, authorAnchor) {
+  const img = authorAnchor?.closest("div")?.querySelector("img") ?? root.querySelector("img");
+  const src = img?.getAttribute("src");
+  return src && !src.startsWith("data:") ? src : null;
 }
 
-function extractPermalink(card, urn) {
-  const anchor = card.querySelector(
-    'a[href*="/feed/update/"], a.app-aware-link[href*="urn:li:activity"]',
-  );
-  if (anchor) return canonicalizeUrl(anchor.href);
-
-  const match = urn?.match(/urn:li:activity:(\d+)/);
-  if (match) return `https://www.linkedin.com/feed/update/urn:li:activity:${match[1]}/`;
-
-  return null;
-}
-
-function extractRawText(card) {
-  const candidates = Array.from(card.querySelectorAll('span[dir="ltr"], div[dir="ltr"]'));
+function extractRawText(root) {
   let best = "";
-  for (const el of candidates) {
+  for (const el of root.querySelectorAll('span[dir="ltr"], div[dir="ltr"]')) {
     const text = el.innerText?.trim() ?? "";
     if (text.length > best.length) best = text;
   }
-
   if (best) return best.slice(0, MAX_RAW_TEXT_LENGTH);
 
-  const lines = (card.innerText ?? "")
+  return (root.innerText ?? "")
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line && !UI_CHROME_LINE.test(line));
-  return lines.join(" ").slice(0, MAX_RAW_TEXT_LENGTH);
-}
-
-function extractCard(card, index) {
-  const urn = extractUrn(card);
-  if (!urn) return { ok: false, index, reason: "no_urn" };
-
-  const author = extractAuthor(card);
-  if (!author) return { ok: false, index, reason: "no_author" };
-
-  const originalPostUrl = extractPermalink(card, urn);
-  if (!originalPostUrl) return { ok: false, index, reason: "no_permalink" };
-
-  const rawText = extractRawText(card);
-  if (!rawText) return { ok: false, index, reason: "no_text" };
-
-  return {
-    ok: true,
-    data: {
-      linkedin_urn: urn,
-      authorName: author.authorName,
-      authorUrl: author.authorUrl,
-      authorAvatarUrl: extractAvatar(card, author.authorAnchor),
-      rawText,
-      originalPostUrl,
-    },
-  };
-}
-
-// --- Single-post page extraction -------------------------------------------
-// This LinkedIn build has NO `data-urn` attribute anywhere in the DOM
-// (confirmed via live inspection), so the card-based extraction above can't
-// find a URN at all on this page. But when the user is on a post's own page
-// (not the saved-posts list), the URL itself already encodes the activity
-// ID — no DOM digging needed. This is the primary path now, since the user
-// prefers syncing one post at a time from its own page anyway.
-
-function isSinglePostPage() {
-  return /^\/(feed\/update|posts)\//.test(window.location.pathname);
-}
-
-function extractUrnFromUrl(href) {
-  // Plain form: /feed/update/urn:li:activity:1234567890123456789/
-  let match = href.match(/urn:li:(activity|share|ugcPost):(\d+)/);
-  if (match) return `urn:li:${match[1]}:${match[2]}`;
-
-  // URL-encoded colon form: .../urn%3Ali%3Aactivity%3A1234567890123456789
-  match = href.match(/urn%3Ali%3A(activity|share|ugcPost)%3A(\d+)/i);
-  if (match) return `urn:li:${match[1]}:${match[2]}`;
-
-  // Slug form: /posts/username_some-slug-activity-1234567890123456789-AbCd/
-  match = href.match(/-activity-(\d+)-/);
-  if (match) return `urn:li:activity:${match[1]}`;
-
-  return null;
+    .filter((line) => line && !UI_CHROME_LINE.test(line))
+    .join(" ")
+    .slice(0, MAX_RAW_TEXT_LENGTH);
 }
 
 function extractSinglePost() {
-  // `.innerText` only exists on real elements, not on `Document` itself
-  // (`document.innerText` is always undefined) — scope everything to a real
-  // element. Prefer LinkedIn's "Primary content" landmark, which excludes
-  // the profile-stats sidebar, footer links, and messaging widget that
-  // `document.body` would otherwise pull in as noise; fall back to the
-  // whole body if that landmark isn't present on this page.
   const root = document.querySelector('section[aria-label="Primary content"]') ?? document.body;
-
   const urn = extractUrnFromUrl(window.location.href);
-  if (!urn) return { ok: false, index: 0, reason: "no_urn_in_url" };
-
+  if (!urn) return { ok: false, reason: "no_urn_in_url" };
   const author = extractAuthor(root);
-  if (!author) return { ok: false, index: 0, reason: "no_author" };
-
+  if (!author) return { ok: false, reason: "no_author" };
   const rawText = extractRawText(root);
-  if (!rawText) {
-    console.warn(`${LOG_PREFIX} no_text diagnostics:`, {
-      ltrCandidateCount: root.querySelectorAll('span[dir="ltr"], div[dir="ltr"]').length,
-      bodyInnerTextLength: root.innerText?.length ?? 0,
-    });
-    return { ok: false, index: 0, reason: "no_text" };
-  }
-
+  if (!rawText) return { ok: false, reason: "no_text" };
   return {
     ok: true,
     data: {
@@ -189,85 +89,226 @@ function extractSinglePost() {
   };
 }
 
-function extractSinglePostResult() {
-  const result = extractSinglePost();
-  if (result.ok) {
-    console.log(`${LOG_PREFIX} extracted (single post)`, result.data);
-    return { extracted: [result.data], skipped: [], totalCardsFound: 1 };
-  }
-  console.warn(`${LOG_PREFIX} skipped single post: ${result.reason}`);
-  return {
-    extracted: [],
-    skipped: [{ index: 0, reason: result.reason }],
-    totalCardsFound: 1,
-  };
+/** Retries while the page is still rendering (background tabs render lazily). */
+async function extractWhenReady(maxWaitMs = 10_000) {
+  const deadline = Date.now() + maxWaitMs;
+  let result;
+  do {
+    result = extractSinglePost();
+    if (result.ok) break;
+    await sleep(700);
+  } while (Date.now() < deadline);
+
+  if (!result.ok) console.warn(`${LOG_PREFIX} extraction failed: ${result.reason}`);
+  return result.ok
+    ? { extracted: [result.data], skipped: [], totalCardsFound: 1 }
+    : { extracted: [], skipped: [{ index: 0, reason: result.reason }], totalCardsFound: 1 };
 }
 
-function extractAllCards() {
-  const cards = getCardElements();
-  const extracted = [];
-  const skipped = [];
+// --- Result → message --------------------------------------------------------
 
-  cards.forEach((card, index) => {
-    const result = extractCard(card, index);
-    if (result.ok) {
-      extracted.push(result.data);
-    } else {
-      skipped.push({ index, reason: result.reason });
-      console.warn(`${LOG_PREFIX} skipped card #${index}: ${result.reason}`, card);
+const SKIP_MESSAGES = {
+  no_urn_in_url: "That doesn't look like a single post.",
+  no_author: "Couldn't find the post's author on the page.",
+  no_text: "Couldn't read the post's text.",
+};
+
+function describeResult(result) {
+  if (!result) return { text: "No response from the extension. Reload the page.", kind: "error" };
+  if (result.error) return { text: result.error, kind: "error" };
+  if (result.aborted === "unauthorized") return { text: "API secret rejected — check the extension Settings.", kind: "error" };
+  if (result.skipped > 0) {
+    const reason = Object.keys(result.skippedReasons ?? {})[0];
+    return { text: SKIP_MESSAGES[reason] ?? "Couldn't read that post.", kind: "error" };
+  }
+  if (result.failed > 0) {
+    const detail = String(result.failures?.[0]?.detail ?? "");
+    const busy = /high demand|quota|429|503/i.test(detail);
+    return { text: busy ? "The AI is busy — try again in a minute." : "Saving failed. Try again.", kind: "error" };
+  }
+  if (result.duplicate > 0) return { text: "Already in your library.", kind: "info" };
+  return { text: "Saved to Gleanings.", kind: "success" };
+}
+
+// --- Floating box ------------------------------------------------------------
+
+const STYLES = `
+  :host { all: initial; }
+  * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  .pill {
+    display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+    border: none; border-radius: 999px; background: #18181b; color: #fff;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  }
+  .pill:hover { background: #27272a; }
+  .panel {
+    width: 320px; padding: 14px; border-radius: 16px; background: #fff; color: #18181b;
+    border: 1px solid #e4e4e7; box-shadow: 0 16px 40px rgba(0,0,0,.18);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .head { display: flex; align-items: center; justify-content: space-between; }
+  .title { font-size: 14px; font-weight: 700; }
+  .icon-btn { border: none; background: none; cursor: pointer; color: #71717a; font-size: 18px; line-height: 1; padding: 2px 6px; border-radius: 8px; }
+  .icon-btn:hover { background: #f4f4f5; color: #18181b; }
+  .row { display: flex; gap: 6px; }
+  input {
+    flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 10px;
+    border: 1px solid #e4e4e7; background: #fafafa; color: #18181b; font-size: 13px; outline: none;
+  }
+  input:focus { border-color: #2563eb; background: #fff; box-shadow: 0 0 0 3px rgba(59,130,246,.2); }
+  .save {
+    height: 36px; padding: 0 14px; border: none; border-radius: 10px;
+    background: #2563eb; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .save:hover:not(:disabled) { background: #1d4ed8; }
+  .save:disabled { opacity: .55; cursor: default; }
+  .hint { font-size: 12px; color: #71717a; min-height: 16px; }
+  .status { font-size: 12.5px; min-height: 18px; }
+  .status.success { color: #15803d; }
+  .status.error { color: #dc2626; }
+  .status.info { color: #52525b; }
+  .foot { display: flex; justify-content: space-between; font-size: 12px; }
+  a { color: #2563eb; text-decoration: none; cursor: pointer; }
+  a:hover { text-decoration: underline; }
+  [hidden] { display: none !important; }
+`;
+
+function injectWidget() {
+  const host = document.createElement("div");
+  // Above LinkedIn's docked messaging bar in the bottom-right corner.
+  host.style.cssText = "position:fixed;z-index:2147483647;bottom:84px;right:24px;";
+  document.documentElement.appendChild(host);
+
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = `
+    <style>${STYLES}</style>
+    <button class="pill" id="pill" aria-expanded="false">🌾 Gleanings</button>
+    <div class="panel" id="panel" hidden>
+      <div class="head">
+        <span class="title">Save to Gleanings</span>
+        <button class="icon-btn" id="close" aria-label="Minimize">–</button>
+      </div>
+      <form class="row" id="form">
+        <input id="url" type="url" placeholder="Paste a LinkedIn post link" autocomplete="off" />
+        <button class="save" id="save" type="submit">Save</button>
+      </form>
+      <div class="hint" id="hint"></div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+      <div class="foot">
+        <a id="library">Open library ↗</a>
+        <a id="options">Settings</a>
+      </div>
+    </div>
+  `;
+
+  const $ = (id) => shadow.getElementById(id);
+  const pill = $("pill");
+  const panel = $("panel");
+  const input = $("url");
+  const saveBtn = $("save");
+  const hint = $("hint");
+  const status = $("status");
+  let autoFilled = "";
+  let busy = false;
+
+  function setOpen(open) {
+    panel.hidden = !open;
+    pill.hidden = open;
+    pill.setAttribute("aria-expanded", String(open));
+    if (open) {
+      syncWithPage();
+      input.focus();
     }
+  }
+
+  function setStatus({ text, kind }) {
+    status.textContent = text;
+    status.className = `status ${kind ?? ""}`;
+  }
+
+  // On a post's own page, pre-fill its link. Re-checked on SPA navigation
+  // (LinkedIn changes the URL without reloading), without overwriting a link
+  // the user typed themselves.
+  function syncWithPage() {
+    const current = isPostPage() ? canonicalizeUrl(window.location.href) : "";
+    if (input.value === "" || input.value === autoFilled) {
+      input.value = current;
+      autoFilled = current;
+    }
+    hint.textContent = current && input.value === current ? "This post is ready to save." : "";
+  }
+
+  let lastHref = window.location.href;
+  setInterval(() => {
+    if (window.location.href !== lastHref) {
+      lastHref = window.location.href;
+      if (!panel.hidden) syncWithPage();
+    }
+  }, 1000);
+
+  async function save() {
+    const url = input.value.trim();
+    if (!url || busy) return;
+    busy = true;
+    saveBtn.disabled = true;
+    setStatus({ text: "Saving… this can take a few seconds.", kind: "info" });
+
+    let result;
+    try {
+      if (isPostPage() && canonicalizeUrl(url) === canonicalizeUrl(window.location.href)) {
+        const payload = await extractWhenReady(4000);
+        result = payload.extracted.length
+          ? await chrome.runtime.sendMessage({ type: "SYNC_EXTRACTED", payload })
+          : { skipped: 1, skippedReasons: { [payload.skipped[0].reason]: 1 } };
+      } else {
+        result = await chrome.runtime.sendMessage({ type: "SAVE_URL", url });
+      }
+    } catch (err) {
+      result = { error: String(err?.message ?? err) };
+    }
+
+    const outcome = describeResult(result);
+    setStatus(outcome);
+    if (outcome.kind !== "error" && input.value !== autoFilled) input.value = "";
+    busy = false;
+    saveBtn.disabled = false;
+  }
+
+  pill.addEventListener("click", () => setOpen(true));
+  $("close").addEventListener("click", () => setOpen(false));
+  $("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    save();
   });
+  input.addEventListener("input", () => {
+    hint.textContent = "";
+    setStatus({ text: "" });
+  });
+  shadow.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+    e.stopPropagation(); // keep LinkedIn's global shortcuts from firing while typing
+  });
+  $("library").addEventListener("click", async () => {
+    const { backendUrl } = await chrome.storage.sync.get(["backendUrl"]);
+    if (backendUrl) window.open(backendUrl, "_blank", "noopener");
+    else chrome.runtime.sendMessage({ type: "OPEN_OPTIONS" });
+  });
+  $("options").addEventListener("click", () => chrome.runtime.sendMessage({ type: "OPEN_OPTIONS" }));
 
-  console.log(`${LOG_PREFIX} extracted`, { extracted, skipped, totalCardsFound: cards.length });
-  return { extracted, skipped, totalCardsFound: cards.length };
+  return { setOpen, setStatus };
 }
 
-async function scrollAndSettle() {
-  let lastCount = getCardElements().length;
-  let stableChecks = 0;
-
-  for (let i = 0; i < 20 && stableChecks < 2; i++) {
-    window.scrollTo(0, document.body.scrollHeight);
-    await sleep(1000);
-    const count = getCardElements().length;
-    if (count === lastCount) {
-      stableChecks++;
-    } else {
-      stableChecks = 0;
-      lastCount = count;
-    }
-  }
-}
+const widget = injectWidget();
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "RUN_SCRAPE") {
-    (async () => {
-      let payload;
-      if (isSinglePostPage()) {
-        // Give the post body a moment to finish rendering — the header
-        // (author info) often paints before the body text streams in.
-        await sleep(1200);
-        payload = extractSinglePostResult();
-      } else {
-        await scrollAndSettle();
-        payload = extractAllCards();
-      }
-      chrome.runtime.sendMessage({ type: "SCRAPE_RESULT", payload });
-      sendResponse({ ok: true });
-    })();
-    return true; // keep the message channel open for the async response
+  if (message?.type === "EXTRACT_SINGLE_POST") {
+    extractWhenReady().then(sendResponse);
+    return true;
+  }
+  if (message?.type === "SAVE_STATUS") {
+    widget.setOpen(true);
+    widget.setStatus(message.pending ? { text: "Saving…", kind: "info" } : describeResult(message.result));
   }
   return undefined;
 });
-
-// Lightweight visibility tracking only — does not trigger any network calls.
-// Actual scraping only happens on an explicit RUN_SCRAPE message from the popup.
-const seenCards = new WeakSet();
-let debounceTimer = null;
-const observer = new MutationObserver(() => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    for (const card of getCardElements()) seenCards.add(card);
-  }, 800);
-});
-observer.observe(document.body, { childList: true, subtree: true });

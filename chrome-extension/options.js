@@ -71,7 +71,7 @@ async function handleSave() {
       try {
         await chrome.permissions.remove({ origins: [previousOrigin] });
       } catch (err) {
-        console.warn("[LI-Sync] failed to revoke stale permission", err);
+        console.warn("[Gleanings] failed to revoke stale permission", err);
       }
     }
   }
