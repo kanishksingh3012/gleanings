@@ -34,3 +34,5 @@ CREATE INDEX IF NOT EXISTS idx_posts_created_at ON public.posts (created_at DESC
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('post-avatars', 'post-avatars', true)
 ON CONFLICT (id) DO NOTHING;
+
+-- Later changes live in supabase/migrations/ — run those too, in order.

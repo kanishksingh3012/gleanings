@@ -7,6 +7,17 @@ export const ParsedPostSchema = z.object({
   link_context: z.string().nullable().optional().describe("One line explanation of what the external link leads to"),
   intent_tags: z.array(z.enum(["Resources", "Cool Build", "Learning", "Inspiration"])).max(1),
   domain_tags: z.array(z.enum(["Design", "Data", "AI", "Coding", "Development"])).max(2),
+  resources: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(120),
+        url: z.string().url(),
+        description: z.string().max(300),
+        type: z.enum(["Tool", "Article", "Repo", "List", "Course", "Other"]),
+      }),
+    )
+    .max(8)
+    .default([]),
 });
 
 export type ParsedPost = z.infer<typeof ParsedPostSchema>;

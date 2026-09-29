@@ -1,9 +1,8 @@
 "use client";
 
-import { SearchIcon } from "lucide-react";
+import { SearchField } from "@heroui/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Input } from "@/components/ui/input";
 
 const DEBOUNCE_MS = 300;
 
@@ -30,16 +29,12 @@ export function SearchInput() {
   }, [value, searchParams, router, pathname]);
 
   return (
-    <div className="relative">
-      <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="search"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="Search titles, summaries, authors"
-        aria-label="Search posts"
-        className="h-10 pl-9"
-      />
-    </div>
+    <SearchField aria-label="Search" value={value} onChange={setValue} fullWidth>
+      <SearchField.Group>
+        <SearchField.SearchIcon />
+        <SearchField.Input placeholder="Search titles, summaries, notes" />
+        <SearchField.ClearButton />
+      </SearchField.Group>
+    </SearchField>
   );
 }

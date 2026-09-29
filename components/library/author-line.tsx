@@ -1,6 +1,5 @@
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar } from "@heroui/react";
 import { initials } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 interface AuthorLineProps {
   name: string;
@@ -13,12 +12,12 @@ interface AuthorLineProps {
 /** Avatar falls back to initials, which also covers broken/expired image URLs. */
 export function AuthorLine({ name, url, avatarUrl, meta, size = "sm" }: AuthorLineProps) {
   return (
-    <div className="flex min-w-0 items-center gap-2 text-sm">
-      <Avatar className={cn(size === "sm" ? "size-6" : "size-9")}>
-        {avatarUrl && <AvatarImage src={avatarUrl} alt="" />}
-        <AvatarFallback className="text-[10px]">{initials(name)}</AvatarFallback>
+    <div className="flex min-w-0 items-center gap-2.5 text-sm">
+      <Avatar size={size} className={size === "sm" ? "size-8" : "size-10"}>
+        {avatarUrl && <Avatar.Image src={avatarUrl} alt="" />}
+        <Avatar.Fallback className="text-xs">{initials(name)}</Avatar.Fallback>
       </Avatar>
-      <div className="flex min-w-0 items-baseline gap-1.5">
+      <div className="flex min-w-0 flex-col leading-tight">
         {url ? (
           <a href={url} target="_blank" rel="noopener noreferrer" className="truncate font-medium hover:underline">
             {name}
@@ -26,7 +25,7 @@ export function AuthorLine({ name, url, avatarUrl, meta, size = "sm" }: AuthorLi
         ) : (
           <span className="truncate font-medium">{name}</span>
         )}
-        {meta && <span className="shrink-0 text-muted-foreground">· {meta}</span>}
+        {meta && <span className="text-xs text-muted">{meta}</span>}
       </div>
     </div>
   );

@@ -1,10 +1,11 @@
+import { RESOURCE_TYPES, type FoundResource } from "./resources";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
 export const DOMAIN_TAGS = ["Design", "Data", "AI", "Coding", "Development"] as const;
 export const INTENT_TAGS = ["Resources", "Cool Build", "Learning", "Inspiration"] as const;
 
 export type PostStatus = "published" | "archived";
-export type LibraryView = "all" | "archived";
+export type LibraryView = "all" | "archived" | "resources";
 
 export interface Post {
   linkedin_urn: string;
@@ -19,6 +20,9 @@ export interface Post {
   intent_tags: string[];
   domain_tags: string[];
   status: PostStatus;
+  note: string | null;
+  is_favorite: boolean;
+  resources: FoundResource[] | null;
   created_at: string;
   synced_at: string;
 }
@@ -27,20 +31,26 @@ export interface PostFilters {
   q?: string;
   domain?: string;
   intent?: string;
+  type?: string;
+  starred?: boolean;
   view?: LibraryView;
 }
 
-/** Normalizes raw `searchParams` into typed filters, dropping unknown tag values. */
+const VIEWS: LibraryView[] = ["all", "archived", "resources"];
+
+/** Normalizes raw `searchParams` into typed filters, dropping unknown values. */
 export function parseFilters(params: Record<string, string | string[] | undefined>): PostFilters {
   const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-  const q = first(params.q)?.trim() || undefined;
-  const domain = first(params.domain);
-  const intent = first(params.intent);
+  const pick = <T extends string>(value: string | undefined, allowed: readonly T[]) =>
+    allowed.includes(value as T) ? (value as T) : undefined;
+
   return {
-    q,
-    domain: DOMAIN_TAGS.includes(domain as never) ? domain : undefined,
-    intent: INTENT_TAGS.includes(intent as never) ? intent : undefined,
-    view: first(params.view) === "archived" ? "archived" : "all",
+    q: first(params.q)?.trim() || undefined,
+    domain: pick(first(params.domain), DOMAIN_TAGS),
+    intent: pick(first(params.intent), INTENT_TAGS),
+    type: pick(first(params.type), RESOURCE_TYPES),
+    starred: first(params.starred) === "1",
+    view: pick(first(params.view), VIEWS) ?? "all",
   };
 }
 
@@ -58,10 +68,13 @@ export async function getPosts(filters: PostFilters): Promise<Post[]> {
 
   if (filters.q) {
     const term = `%${escapeForOr(filters.q)}%`;
-    query = query.or(`title.ilike.${term},summary.ilike.${term},author_name.ilike.${term}`);
+    query = query.or(
+      `title.ilike.${term},summary.ilike.${term},author_name.ilike.${term},note.ilike.${term}`,
+    );
   }
   if (filters.domain) query = query.contains("domain_tags", [filters.domain]);
   if (filters.intent) query = query.contains("intent_tags", [filters.intent]);
+  if (filters.starred) query = query.eq("is_favorite", true);
 
   const { data, error } = await query;
   if (error) throw new Error(`Failed to load posts: ${error.message}`);
@@ -87,8 +100,4 @@ export async function getLastSyncedAt(): Promise<string | null> {
     .maybeSingle();
   if (error) throw new Error(`Failed to load sync status: ${error.message}`);
   return data?.synced_at ?? null;
-}
-
-export function mutationsEnabled(): boolean {
-  return process.env.MUTATIONS_ENABLED === "true";
 }

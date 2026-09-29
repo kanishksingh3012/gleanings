@@ -5,6 +5,7 @@ import { SyncRequestSchema } from "@/lib/schemas";
 import { normalizeText } from "@/lib/text";
 import { parsePost, LLMExtractionError } from "@/lib/llm";
 import { mirrorAvatar } from "@/lib/storage";
+import { resolveResourceLinks } from "@/lib/links";
 
 const REQUIRED_ENV_VARS = [
   "API_SECRET_KEY",
@@ -98,6 +99,8 @@ export async function POST(request: NextRequest) {
     throw err;
   }
 
+  const resources = await resolveResourceLinks(parsedPost.resources ?? []);
+
   const { data: inserted, error: insertError } = await supabase
     .from("posts")
     .upsert(
@@ -113,6 +116,7 @@ export async function POST(request: NextRequest) {
         link_context: parsedPost.link_context ?? null,
         intent_tags: parsedPost.intent_tags,
         domain_tags: parsedPost.domain_tags,
+        resources,
       },
       { onConflict: "linkedin_urn", ignoreDuplicates: true },
     )

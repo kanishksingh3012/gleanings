@@ -1,1 +1,1 @@
-export { cn } from "cn"
+export { clsx as cn } from "clsx";

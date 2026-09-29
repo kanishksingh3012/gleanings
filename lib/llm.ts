@@ -11,7 +11,8 @@ export class LLMExtractionError extends Error {
 // "gemini-1.5-flash" was retired by Google; "-latest" aliases track whatever
 // Google currently recommends for that tier without needing a code change
 // every time a model generation is deprecated.
-const MODEL_NAME = "gemini-flash-latest";
+// The lite model is a fallback for the main one's frequent "high demand" 503s.
+const MODEL_NAMES = ["gemini-flash-latest", "gemini-flash-lite-latest"];
 
 // Cap how much text we actually send to the model — a very long article-style
 // post shouldn't blow up token cost. The hard request-size reject (20k chars)
@@ -29,6 +30,7 @@ const SYSTEM_INSTRUCTION = [
   "intent_tags must contain at most one value and domain_tags at most two, chosen ONLY from the provided enum lists — never invent a new tag.",
   "title must be at most 6 words.",
   "summary must be 2-3 sentences describing only what the post actually says.",
+  "resources lists every useful external link in the post (tools, articles, repos, lists, courses) — at most 8. Each url must be copied exactly from the post text; never construct or guess a URL. title is the resource's name, description one short line on what it is. If there are no links, resources is an empty array.",
 ].join(" ");
 
 const responseSchema: Schema = {
@@ -54,11 +56,28 @@ const responseSchema: Schema = {
         enum: ["Design", "Data", "AI", "Coding", "Development"],
       },
     },
+    resources: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          title: { type: SchemaType.STRING },
+          url: { type: SchemaType.STRING },
+          description: { type: SchemaType.STRING },
+          type: {
+            type: SchemaType.STRING,
+            format: "enum",
+            enum: ["Tool", "Article", "Repo", "List", "Course", "Other"],
+          },
+        },
+        required: ["title", "url", "description", "type"],
+      },
+    },
   },
   required: ["title", "summary", "intent_tags", "domain_tags"],
 };
 
-function getModel() {
+function getModel(name: string) {
   const apiKey = process.env.LLM_API_KEY;
   if (!apiKey) {
     throw new Error("Missing LLM configuration: LLM_API_KEY is not set");
@@ -66,7 +85,7 @@ function getModel() {
 
   const genAI = new GoogleGenerativeAI(apiKey);
   return genAI.getGenerativeModel({
-    model: MODEL_NAME,
+    model: name,
     systemInstruction: SYSTEM_INSTRUCTION,
     generationConfig: {
       temperature: 0.2,
@@ -87,10 +106,19 @@ const TRANSIENT_RETRY_DELAYS_MS = [500, 1500];
  * frequent "model is currently experiencing high demand" 503) with
  * increasing backoff before giving up.
  */
-async function generateWithRetry(
-  model: ReturnType<typeof getModel>,
-  prompt: string,
-): Promise<string> {
+async function generateWithRetry(prompt: string): Promise<string> {
+  let lastError: unknown;
+  for (const name of MODEL_NAMES) {
+    try {
+      return await generateWithModel(getModel(name), prompt);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
+async function generateWithModel(model: ReturnType<typeof getModel>, prompt: string): Promise<string> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= TRANSIENT_RETRY_DELAYS_MS.length; attempt++) {
     try {
@@ -131,18 +159,18 @@ export async function parsePost(sanitizedText: string): Promise<ParsedPost> {
       link_context: null,
       intent_tags: [],
       domain_tags: [],
+      resources: [],
     };
   }
 
   const truncated = trimmed.slice(0, MAX_LLM_INPUT_LENGTH);
-  const model = getModel();
 
   let prompt = `Extract structured metadata from this LinkedIn post:\n\n${truncated}`;
 
   try {
     const MAX_SCHEMA_ATTEMPTS = 2;
     for (let attempt = 0; attempt < MAX_SCHEMA_ATTEMPTS; attempt++) {
-      const raw = await generateWithRetry(model, prompt);
+      const raw = await generateWithRetry(prompt);
 
       let parsedJson: unknown;
       try {

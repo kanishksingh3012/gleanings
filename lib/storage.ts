@@ -34,7 +34,9 @@ export async function mirrorAvatar(
     }
 
     const blob = await response.arrayBuffer();
-    const key = `${encodeURIComponent(urn)}.${extensionFromContentType(contentType)}`;
+    // Plain [a-zA-Z0-9-] key: getPublicUrl re-encodes `%`, so an already
+    // URL-encoded key yields a double-encoded (broken) public URL.
+    const key = `${urn.replace(/[^a-zA-Z0-9]/g, "-")}.${extensionFromContentType(contentType)}`;
 
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.storage.from(BUCKET_NAME).upload(key, blob, {
