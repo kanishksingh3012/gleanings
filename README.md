@@ -1,74 +1,59 @@
-# LinkedIn Post Processor — Backend
+# Gleanings
 
-Single-user, Bring-Your-Own-Key backend for turning saved LinkedIn posts into
-a structured personal knowledge library. This is the **backend foundation**
-(Next.js API + Supabase + Gemini extraction pipeline) — the Chrome extension
-and PWA reader UI come in a later pass. See [CLAUDE.md](./CLAUDE.md) for the
-full product spec.
+A personal library for LinkedIn posts worth keeping. Save a post with a browser
+extension; it gets summarised, tagged, and its links pulled out automatically.
+Then search, filter, star, note and organise it from a small web app.
 
-## Setup
+**Demo (sample data, no account needed):** https://gleanings-post-parser.vercel.app/demo
 
-1. **Install dependencies** (already done if you're reading this from the repo):
-   ```bash
-   npm install
-   ```
+## Stack
 
-2. **Create a Supabase project** at [supabase.com](https://supabase.com).
+Next.js 16 (App Router) + HeroUI + Tailwind, Supabase (Postgres + Storage),
+Gemini for summarising/tagging, deployed on Vercel. Plus a plain-JS Manifest V3
+browser extension.
 
-3. **Run the schema.** Open the SQL Editor in your Supabase project and run
-   the contents of [`supabase/schema.sql`](./supabase/schema.sql).
+## Deploy your own copy
 
-4. **Create the storage bucket.** In the Supabase dashboard's Storage tab,
-   create a new bucket named `post-avatars` and mark it **public**.
+1. **Fork/clone this repo**, then `npm install`.
 
-5. **Get a Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey).
+2. **Create a Supabase project** at [supabase.com](https://supabase.com). In
+   the SQL Editor, run [`supabase/schema.sql`](./supabase/schema.sql). In
+   Storage, create a bucket named `post-avatars` and mark it **public**.
 
-6. **Configure environment variables.** Copy `.env.example` to `.env.local`
-   and fill in the values:
-   ```bash
-   cp .env.example .env.local
-   ```
-   - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — from your Supabase project's API settings.
-   - `LLM_API_KEY` — your Gemini API key.
-   - `API_SECRET_KEY` — any random string you invent yourself, e.g. `openssl rand -hex 32`. This is not shared with any external service; it's the bearer token the Chrome extension will use to call this backend.
+3. **Get a Gemini API key** from [Google AI Studio](https://aistudio.google.com/apikey).
 
-7. **Run the dev server:**
-   ```bash
-   npm run dev
-   ```
+4. **Set environment variables** — copy `.env.example` to `.env.local` locally,
+   and add the same values as Environment Variables in your Vercel project:
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — from Supabase's API settings.
+   - `LLM_API_KEY` — your Gemini key.
+   - `API_SECRET_KEY` — any random string (`openssl rand -hex 32`); the bearer token the extension uses to call your deployment.
+   - `EDIT_PASSWORD` — a password of your choosing. **This gates the entire site** — without it set, the deployed site is locked to everyone. Locally, leave it unset (or set `MUTATIONS_ENABLED=true`) to skip the lock screen while developing.
 
-## Testing
+5. **Deploy to Vercel** (or run `npm run dev` locally first to try it out).
+
+6. **Load the browser extension** — see [chrome-extension/README.md](./chrome-extension/README.md)
+   for install steps and how saving works. Point it at your deployment's URL
+   and the `API_SECRET_KEY` from step 4.
+
+7. Visit your deployment, enter your `EDIT_PASSWORD` to unlock editing, and
+   start saving posts.
+
+## Features
+
+- Search across posts, summaries and notes
+- Filter by domain/intent tags, plus your own custom tags
+- A separate Resources collection for tools/articles/repos found in posts
+- Notes, favorites, archive, Markdown export
+- Light/dark mode, works on mobile
+- Password-gated (single user) — read and edit access both require `EDIT_PASSWORD`
+
+## Local development
 
 ```bash
-npm test    # Vitest — fully mocked, no real credentials needed
-npm run build   # TypeScript + production build check
+npm install
+npm run dev     # http://localhost:3000
+npm test        # Vitest, fully mocked
+npm run build   # typecheck + production build
 ```
 
-## Trying `/api/sync` manually
-
-Once `.env.local` is filled in with real credentials:
-
-```bash
-curl -X POST http://localhost:3000/api/sync \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <your API_SECRET_KEY>" \
-  -d '{
-    "linkedin_urn": "urn:li:activity:12345",
-    "authorName": "Jane Doe",
-    "authorUrl": "https://linkedin.com/in/janedoe",
-    "authorAvatarUrl": "https://media.licdn.com/dms/image/example.jpg",
-    "rawText": "Some interesting post content about building AI agents...",
-    "originalPostUrl": "https://linkedin.com/posts/janedoe_12345"
-  }'
-```
-
-A successful sync returns the inserted row. Re-running the same request
-returns `{ "duplicate": true }` without calling the LLM or mirroring the
-avatar again.
-
-**Note:** full end-to-end verification (a real row landing in `posts`, an
-avatar mirrored into Storage) requires real Supabase + Gemini credentials —
-Claude cannot create those cloud accounts for you. Without them, requests
-will fail once they reach Supabase/Gemini, which is expected; the auth,
-validation, and request-wiring layers are all covered by the automated test
-suite regardless.
+See [CLAUDE.md](./CLAUDE.md) for the full product spec and design notes.

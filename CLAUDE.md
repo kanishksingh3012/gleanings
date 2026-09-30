@@ -203,7 +203,9 @@ Execute the build in isolated, sequential steps:
 
 ## Build Status
 
-- **Phase 1-2 (Backend Foundation):** Done. LLM model: `gemini-flash-latest` (the originally-planned `gemini-1.5-flash` was retired by Google and had to be swapped). Live-tested end-to-end against a real Supabase project and real Gemini API — see `/Users/kanishksingh/.claude/plans/claude-md-linkedin-vivid-umbrella.md` for guardrails and edge cases. Supabase project ref: `ezpgvdrvyqsfiayzwvia`, connected via the Supabase MCP server.
-- **Minimal visible feed (`app/page.tsx`):** Done. Read-only Server Component rendering synced posts as cards — not the full Phase 4 PWA reader (no search/filters/PWA manifest yet), just a way to see the pipeline working in a browser.
-- **Phase 3 (Chrome Extension):** Built (`chrome-extension/`), but **not yet verified against a real LinkedIn session** — the user chose best-effort selectors now over live DOM inspection first, so the scraper (`content.js`) will likely need selector adjustments once tested against a real saved-posts page. See `chrome-extension/README.md` for the load/test/report-back flow.
-- **Phase 4 (PWA Reader UI):** Not started (filters, search, slide-over reader, `@serwist/next` service worker/manifest).
+- **Phase 1-2 (Backend Foundation):** Done. LLM model: `gemini-flash-latest`, with fallback to `gemini-flash-lite-latest` on 503s. Supabase project ref: `ezpgvdrvyqsfiayzwvia`, connected via the Supabase MCP server.
+- **Library UI (`app/page.tsx` + `components/library/*`):** Done. Full HeroUI v3 app — search, tag filters (built-in + custom, user-assignable), starred, notes, Resources tab, archive, Markdown export, light/dark, Settings as a modal.
+- **Phase 3 (Chrome Extension):** Done and in daily use (`chrome-extension/`) — floating box, right-click save, saving any post URL (not just the current page). See `chrome-extension/README.md`.
+- **Access control:** Done. `EDIT_PASSWORD` gates the whole deployed site (`middleware.ts` fails closed if unset) and unlocks editing; `/private` is the lock screen.
+- **Public demo (`app/demo/page.tsx`):** Done. Sample data (`lib/demo-data.ts`), no auth required, edits are local-only and never persisted — linked from `/private` and used for the public GitHub/LinkedIn demo link.
+- **PWA manifest/service worker:** Not started — not currently planned.
